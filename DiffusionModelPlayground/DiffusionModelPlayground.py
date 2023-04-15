@@ -11,7 +11,7 @@ class TrainingConfig:
     train_batch_size = 4
     eval_batch_size = 4  # how many images to sample during evaluation
     num_epochs = 200
-    gradient_accumulation_steps = 1
+    gradient_accumulation_steps = 20
     learning_rate = 1e-4
     lr_warmup_steps = 500
     save_image_epochs = 10
@@ -77,7 +77,7 @@ train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.train_
 
 # %% 
 from diffusers import UNet2DModel
-
+# LATER USE UNet2DConditionModel FOR CONDITIONAL MODELS
 
 model = UNet2DModel(
     sample_size=config.image_size,  # the target image resolution
@@ -227,8 +227,8 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
                 noise_pred = model(noisy_images, timesteps, return_dict=False)[0]
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
-
-                accelerator.clip_grad_norm_(model.parameters(), 1.0)
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
