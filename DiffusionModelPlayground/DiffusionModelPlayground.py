@@ -4,20 +4,23 @@
 
 from dataclasses import dataclass
 from datasets import load_dataset
+import datasets
+from multiprocess import set_start_method
 
 @dataclass
 class TrainingConfig:
     image_size = 128  # the generated image resolution
     train_batch_size = 4
     eval_batch_size = 4  # how many images to sample during evaluation
-    num_epochs = 1000
+    num_epochs = 10
     gradient_accumulation_steps = 20
     learning_rate = 1e-4
-    lr_warmup_steps = 50
-    save_image_epochs = 10
-    save_model_epochs = 300
+    lr_warmup_steps = 500
+    # save_image_epochs = 0.0001
+    save_image_steps = 1000
+    save_model_epochs = 1
     mixed_precision = 'fp16'  # `no` for float32, `fp16` for automatic mixed precision
-    output_dir = '/scratch_net/biwidl211/rl_course_10/DiffusionModelPlayground/carla-weather-0_1000epochs_acc_DDIM'  # the model namy locally and on the HF Hub
+    output_dir = '/srv/beegfs02/scratch/rl_course/data/proj-diffuse-drive/results/DiffusionModelPlayground/full_rgb_front_unconditioned/10epochs_1e-4_500wu'  # the model namy locally and on the HF Hub
 
     push_to_hub = False  # whether to upload the saved model to the HF Hub
     hub_private_repo = False  
@@ -28,9 +31,17 @@ config = TrainingConfig()
     
 # %%
 # config.dataset_name = "huggan/smithsonian_butterflies_subset"
-
-dataset = load_dataset("DiffusionModelPlayground/data/weather-0/data/routes_town01_short_w0_04_10_10_17_10/rgb_front", split="train")
-
+set_start_method("spawn")
+datasets.enable_progress_bar
+datasets.logging.set_verbosity_debug()
+print("Loading dataset...")
+dataset = load_dataset("imagefolder",
+                       split="train", 
+                    #    cache_dir="/srv/beegfs02/scratch/rl_course/data/proj-diffuse-drive/dataset/extracted_rgb_front_unconditioned/cache",
+                       data_dir="/scratch_net/biwidl211/rl_course_10/DiffusionModelPlayground/extracted_rgb_front_unconditioned",
+                        # num_proc=8,
+)   
+print("Dataset loaded.")
 # %%
 dataset
 
@@ -133,7 +144,7 @@ from diffusers.optimization import get_cosine_schedule_with_warmup
 lr_scheduler = get_cosine_schedule_with_warmup(
     optimizer=optimizer,
     num_warmup_steps=config.lr_warmup_steps,
-    num_training_steps=(len(train_dataloader) * config.num_epochs),
+    num_training_steps=(len(train_dataloader) * config.num_epochs//config.gradient_accumulation_steps),
 )
 
 from diffusers import DDPMPipeline, DDIMPipeline
@@ -148,7 +159,7 @@ def make_grid(images, rows, cols):
         grid.paste(image, box=(i%cols*w, i//cols*h))
     return grid
 
-def evaluate(config, epoch, pipeline):
+def evaluate(config, epoch, step, pipeline):
     # Sample some images from random noise (this is the backward diffusion process).
     # The default pipeline output type is `List[PIL.Image]`
     images = pipeline(
@@ -163,7 +174,7 @@ def evaluate(config, epoch, pipeline):
     test_dir = os.path.join(config.output_dir, "samples")
     os.makedirs(test_dir, exist_ok=True)
     print("saving at"+str(test_dir))
-    image_grid.save(f"{test_dir}/{epoch:04d}.png")
+    image_grid.save(f"{test_dir}/{epoch:04d}_{step:04d}.png")
     
     
 from accelerate import Accelerator
@@ -236,6 +247,13 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
                 lr_scheduler.step()
                 optimizer.zero_grad()
             
+            # check if should evaluate the model
+            if accelerator.is_main_process:
+                # pipeline = DDPMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
+                pipeline = DDIMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
+                if(step%config.save_image_steps==0):
+                    evaluate(config, epoch, step, pipeline)
+                    
             progress_bar.update(1)
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
             progress_bar.set_postfix(**logs)
@@ -247,8 +265,8 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
             # pipeline = DDPMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
             pipeline = DDIMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
 
-            if (epoch + 1) % config.save_image_epochs == 0 or epoch == config.num_epochs - 1:
-                evaluate(config, epoch, pipeline)
+            # if (epoch + 1) % config.save_image_epochs == 0 or epoch == config.num_epochs - 1:
+                # evaluate(config, epoch, pipeline)
 
             if (epoch + 1) % config.save_model_epochs == 0 or epoch == config.num_epochs - 1:
                 if config.push_to_hub:
