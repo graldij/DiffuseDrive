@@ -10,14 +10,14 @@ class TrainingConfig:
     image_size = 128  # the generated image resolution
     train_batch_size = 4
     eval_batch_size = 4  # how many images to sample during evaluation
-    num_epochs = 200
+    num_epochs = 1000
     gradient_accumulation_steps = 20
     learning_rate = 1e-4
-    lr_warmup_steps = 500
+    lr_warmup_steps = 50
     save_image_epochs = 10
     save_model_epochs = 300
     mixed_precision = 'fp16'  # `no` for float32, `fp16` for automatic mixed precision
-    output_dir = '/scratch_net/biwidl211/rl_course_10/DiffusionModelPlayground/carla-weather-0_200epochs'  # the model namy locally and on the HF Hub
+    output_dir = '/scratch_net/biwidl211/rl_course_10/DiffusionModelPlayground/carla-weather-0_1000epochs_acc_DDIM'  # the model namy locally and on the HF Hub
 
     push_to_hub = False  # whether to upload the saved model to the HF Hub
     hub_private_repo = False  
@@ -103,9 +103,11 @@ model = UNet2DModel(
       ),
 )
 
-from diffusers import DDPMScheduler
+from diffusers import DDPMScheduler, DDIMScheduler
+# consider also DDIM, should be faster
 
-noise_scheduler = DDPMScheduler(num_train_timesteps=1000)
+# noise_scheduler = DDPMScheduler(num_train_timesteps=1000)
+noise_scheduler = DDIMScheduler(num_train_timesteps=1000)
 
 import torch
 from PIL import Image
@@ -134,7 +136,8 @@ lr_scheduler = get_cosine_schedule_with_warmup(
     num_training_steps=(len(train_dataloader) * config.num_epochs),
 )
 
-from diffusers import DDPMPipeline
+from diffusers import DDPMPipeline, DDIMPipeline
+
 
 import math
 
@@ -216,7 +219,7 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
             bs = clean_images.shape[0]
 
             # Sample a random timestep for each image
-            timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bs,), device=clean_images.device).long()
+            timesteps = torch.randint(0, len(noise_scheduler), (bs,), device=clean_images.device).long()
 
             # Add noise to the clean images according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
@@ -241,7 +244,8 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
 
         # After each epoch you optionally sample some demo images with evaluate() and save the model
         if accelerator.is_main_process:
-            pipeline = DDPMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
+            # pipeline = DDPMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
+            pipeline = DDIMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
 
             if (epoch + 1) % config.save_image_epochs == 0 or epoch == config.num_epochs - 1:
                 evaluate(config, epoch, pipeline)
