@@ -140,21 +140,22 @@ def evaluate(config, epoch, pipeline):
         generator=torch.manual_seed(config.seed),
     ).images
 
-    ## Here is not correct: I think need convert to tensor, but have the same false results
+    ## The pipeline has one bug: if latent_channel > 4, must find another pipeline, luckily no need to worry in this case
     transform = transforms.Compose([
     transforms.PILToTensor()
     ])
   
-    # transform = transforms.PILToTensor()
+    transform = transforms.PILToTensor()
     # Convert the PIL image to Torch tensor
-    img_tensor = transform(images)
-
+    img_tensors = [transform(image).unsqueeze(0) for image in images]
+    img_tensors = torch.cat(img_tensors).type(torch.FloatTensor).cuda()
+    
     # Pass to decoder
-    img_out = vae.decode(img_tensor).sample
+    img_out = vae.decode(img_tensors).sample
 
     ## Transform back
     transform_back = transforms.ToPILImage()
-    images = transform_back(img_out)
+    images = [transform_back(img_output) for img_output in img_out]
     # Make a grid out of the images
     image_grid = make_grid(images, rows=1, cols=4)
 
