@@ -4,6 +4,8 @@ from torchvision import transforms
 from datasets import load_dataset
 from torch.nn import MSELoss
 from pynvml import *
+import matplotlib.pyplot as plt
+import os
 
 
 def load_vae(repo_id, device):
@@ -15,7 +17,7 @@ def load_vae(repo_id, device):
 def transform(dataset):
     preprocess = transforms.Compose(
     [
-        transforms.Resize((128, 128)),
+        transforms.Resize((64, 64)),
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(20),
         transforms.RandomPerspective(distortion_scale=0.1, p = 0.3),
@@ -37,13 +39,20 @@ def load_images(data_path, batch_size):
 def run_vae(model, dataloader):
     criterion = MSELoss()
     loss = 0
-    for batch in dataloader:
+    for i, batch in enumerate(dataloader):
         images = batch["images"]
         #batch = {k: v.to("cuda") for k, v in batch.items()}
         ## manually push images to GPU becuase here no Accelarator
         images = images.cuda()
-        reconstruct = model(images)
-        loss += criterion(images, reconstruct.sample)
+
+        #reconstruct = model(images)  # use whole vae
+        latent = model.encode(images).latent_dist.sample()
+        # decode from latent space
+        reconstruct = model.decode(latent)
+        reconstruct = reconstruct.sample
+        loss += criterion(images, reconstruct)
+        plt.imshow(reconstruct.cpu().detach().permute(0,2,3,1).numpy().reshape(64,64,3))
+        plt.savefig(f'img/{i:03d}.png')
     loss = loss / len(dataloader)
     return loss
 
@@ -57,11 +66,11 @@ def main():
     vae = load_vae(repo_id, device)
 
     # Load images
-    images = load_images(image_path, batch_size=2)
+    images = load_images(image_path, batch_size=1)
 
     # Use VAE, compute reconstruction error
     loss = run_vae(model=vae, dataloader=images)
-    print('loss of vae is: ', loss)
+    print('loss of vae is: ', loss.cpu().detach().numpy())
 
 if __name__ == "__main__":
     main()
