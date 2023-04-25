@@ -21,6 +21,9 @@ class TrainingConfig:
     save_model_epochs = 1
     mixed_precision = 'fp16'  # `no` for float32, `fp16` for automatic mixed precision
     output_dir = '/srv/beegfs02/scratch/rl_course/data/proj-diffuse-drive/results/DiffusionModelPlayground/full_rgb_front_unconditioned/10epochs_1e-4_500wu'  # the model namy locally and on the HF Hub
+    unet_in_channels = 4
+    device = "cuda"
+    num_inference_steps = 50
 
     push_to_hub = False  # whether to upload the saved model to the HF Hub
     hub_private_repo = False  

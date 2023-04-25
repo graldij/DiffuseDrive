@@ -137,36 +137,51 @@ def make_grid(images, rows, cols):
         grid.paste(image, box=(i%cols*w, i//cols*h))
     return grid
 
-def evaluate(config, epoch, pipeline, step):
-    # Sample some images from random noise (this is the backward diffusion process).
-    # The default pipeline output type is `List[PIL.Image]`
-    # breakpoint()
-    images = pipeline(
-        batch_size = config.eval_batch_size, 
-        generator=torch.manual_seed(config.seed),
-    ).images
 
-    ## The pipeline has one bug: if latent_channel > 4, must find another pipeline, luckily no need to worry in this case
-  
-    transform = transforms.PILToTensor()
-    # Convert the PIL image to Torch tensor
-    img_tensors = [transform(image).unsqueeze(0) for image in images]
-    img_tensors = torch.cat(img_tensors).type(torch.FloatTensor).cuda()
+def evaluate(config, epoch, pipeline, step, model):
+    latents = torch.randn(
+        (config.eval_batch_size, config.unet_in_channels, config.image_size // 8, config.image_size // 8)
+    )
+    latents = latents.to(config.device)
+    noise_scheduler.set_timesteps(config.num_inference_steps)
+    latents = latents * noise_scheduler.init_noise_sigma
     
-    # Pass to decoder
-    img_out = vae.decode(img_tensors).sample
 
-    ## Transform back
-    transform_back = transforms.ToPILImage()
-    images = [transform_back(img_output) for img_output in img_out]
-    # Make a grid out of the images
-    image_grid = make_grid(images, rows=4, cols=4)
+    noise_scheduler.set_timesteps(config.num_inference_steps)
 
-    # Save the images
-    test_dir = os.path.join(config.output_dir, "samples")
-    os.makedirs(test_dir, exist_ok=True)
-    print("saving at"+str(test_dir))
-    image_grid.save(f"{test_dir}/{epoch:04d}_{step:04d}.png")
+    for t in tqdm(noise_scheduler.timesteps):
+        # expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.
+        latent_model_input = latents
+
+        latent_model_input = noise_scheduler.scale_model_input(latent_model_input, timestep=t)
+
+        # predict the noise residual
+        with torch.no_grad():
+            noise_pred = model(latent_model_input, t).sample
+
+        # perform guidance
+        noise_pred_uncond = noise_pred
+        noise_pred = noise_pred_uncond
+
+        # compute the previous noisy sample x_t -> x_t-1
+        latents = noise_scheduler.step(noise_pred, t, latents).prev_sample
+        ## Transform back
+    
+    with torch.no_grad():
+        latents = 1 / 0.18215 * latents
+        image = vae.decode(latents).sample
+        image = image - image.min()
+        image = image / image.max()
+        image = image.detach().cpu().permute(0, 2, 3, 1).numpy()
+        images = (image * 255).round().astype("uint8")
+        pil_images = [Image.fromarray(image) for image in images]
+        image_grid = make_grid(pil_images, rows=1, cols=4)
+
+        # Save the images
+        test_dir = os.path.join(config.output_dir, "samples")
+        os.makedirs(test_dir, exist_ok=True)
+        print("saving at"+str(test_dir))
+        image_grid.save(f"{test_dir}/{epoch:02d}_{step:06d}.png")
     
     
 from accelerate import Accelerator
@@ -248,7 +263,7 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
                 # pipeline = DDPMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
                 pipeline = DDIMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
                 if(step%config.save_image_steps==0 and not (step==0 and epoch==0)):
-                    evaluate(config, epoch, pipeline, step)
+                    evaluate(config, epoch, pipeline, step, model)
                     
             progress_bar.update(1)
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
