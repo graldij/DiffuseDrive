@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datasets import load_dataset
 import torch.nn.functional as F
+import os
 
 ## To Do: change output_dir, dataset directory
 @dataclass
@@ -12,10 +13,14 @@ class TrainingConfig:
     gradient_accumulation_steps = 20
     learning_rate = 1e-4
     lr_warmup_steps = 500
-    save_image_steps = 1000
+    save_image_steps = 100
     save_model_epochs = 1
     mixed_precision = 'fp16'  # `no` for float32, `fp16` for automatic mixed precision
-    output_dir = '/srv/beegfs02/scratch/rl_course/data/proj-diffuse-drive/results/DiffusionModelPlayground/full_rgb_front_unconditioned_latent/20epochs_1e-4_500wu_64_128_256_256'  # the model namy locally and on the HF Hub
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+    output_dir = current_dir + '/../output/full_rgb_front_unconditioned_latent/20epochs_1e-4_500wu_64_128_256_256'  # the model namy locally and on the HF Hub
+    unet_in_channels = 4
+    device = "cuda"
+    num_inference_steps = 50
 
     push_to_hub = False  # whether to upload the saved model to the HF Hub
     hub_private_repo = False  
@@ -29,7 +34,7 @@ config = TrainingConfig()
 
 dataset = load_dataset("imagefolder", 
                        split="train",
-                       data_dir="/scratch_net/biwidl211/rl_course_10/DiffusionModelPlayground/extracted_rgb_front_unconditioned",
+                       data_dir= config.current_dir + "/../data",
                        )
 
 # %%
@@ -207,7 +212,7 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
             repo = Repository(config.output_dir, clone_from=repo_name)
         elif config.output_dir is not None:
             os.makedirs(config.output_dir, exist_ok=True)
-        accelerator.init_trackers("train_example")
+        accelerator.init_trackers("LatentDiffuseUncondition")
     
     # Prepare everything
     # There is no specific order to remember, you just need to unpack the 
