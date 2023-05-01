@@ -5,7 +5,7 @@ import torch.nn.functional as F
 ## To Do: change output_dir, dataset directory
 @dataclass
 class TrainingConfig:
-    image_size = 128  # the generated image resolution
+    image_size = 256  # the generated image resolution
     train_batch_size = 4
     eval_batch_size = 16  # how many images to sample during evaluation
     num_epochs = 20
@@ -50,12 +50,12 @@ from torchvision import transforms
 preprocess = transforms.Compose(
     [
         transforms.Resize((config.image_size, config.image_size)),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(20),
-        transforms.RandomPerspective(distortion_scale=0.1, p = 0.3),
-        transforms.RandomGrayscale(p = 0.2),
+        # transforms.RandomHorizontalFlip(),
+        # transforms.RandomRotation(20),
+        # transforms.RandomPerspective(distortion_scale=0.1, p = 0.3),
+        # transforms.RandomGrayscale(p = 0.2),
         transforms.ToTensor(),
-        transforms.Normalize([0.5], [0.5]),
+        transforms.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225]),
     ]
 )
 
@@ -90,26 +90,19 @@ model = UNet2DModel(
     in_channels=4,  # the number of input channels, 3 for RGB images
     out_channels=4,  # the number of output channels
     layers_per_block=2,  # how many ResNet layers to use per UNet block
-    block_out_channels=(64,128,256,256),  # the number of output channes for each UNet block
-    down_block_types=( 
-        "DownBlock2D",  # a regular ResNet downsampling block 
-        "DownBlock2D",  # a regular ResNet downsampling block 
-        "AttnDownBlock2D",  # a ResNet downsampling block with spatial self-attention
-        "DownBlock2D",
-    ), 
+    attention_head_dim=32,
+    block_out_channels=(256,512,1024),  # the number of output channes for each UNet block
+    down_block_types=(
+        "DownBlock2D","AttnDownBlock2D", "AttnDownBlock2D"), 
     up_block_types=(
-        "UpBlock2D",  # a regular ResNet upsampling block
-        "AttnUpBlock2D",  # a ResNet upsampling block with spatial self-attention
-        "UpBlock2D",  
-        "UpBlock2D"  
-      ),
+        "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
 )
 
 from diffusers import DDPMScheduler, DDIMScheduler
 # consider also DDIM, should be faster
 
-# noise_scheduler = DDPMScheduler(num_train_timesteps=1000)
-noise_scheduler = DDIMScheduler(num_train_timesteps=1000)
+noise_scheduler = DDPMScheduler(num_train_timesteps=1000)
+# noise_scheduler = DDIMScheduler(num_train_timesteps=1000)
 
 import torch
 from PIL import Image
@@ -252,8 +245,8 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
                 noise_pred = model(noisy_images, timesteps, return_dict=False)[0]
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
-                if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(model.parameters(), 1.0)
+                # if accelerator.sync_gradients:
+                #     accelerator.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
