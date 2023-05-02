@@ -1,5 +1,3 @@
-DiffuseDrive Project Spring Semester 2023
-
 ## DiffuseDrive Project Spring Semester 2023 
 
 1. If you want to run it, you need change the output_dir and the path for loading dataset.
