@@ -21,7 +21,6 @@ D4RL @ git+https://github.com/Farama-Foundation/d4rl@71a9549f2091accff93eeff68f1
 datasets==2.11.0
 debugpy==1.6.7
 decorator==5.1.1
--e git+ssh://git@github.com/jannerm/diffuser.git@7ea422860cc0106e5ca5949d980f04b799d5462c#egg=diffuser
 diffusers==0.15.0
 dill==0.3.6
 dm-control==1.0.12
@@ -65,7 +64,7 @@ MarkupSafe==2.1.2
 matplotlib==3.7.1
 matplotlib-inline==0.1.6
 mc-bin-client==1.0.1
-mjrl @ git+https://github.com/aravindr93/mjrl@3871d93763d3b49c4741e6daeaebbc605fe140dc
+mjrl @ git+https://github.com/aravindr93/mjrl@master#egg=mjrl
 mpmath==1.3.0
 mujoco==2.3.5
 mujoco-py==2.1.2.14
@@ -74,7 +73,7 @@ multiprocess==0.70.14
 mypy-extensions==1.0.0
 nest-asyncio==1.5.6
 networkx==3.1
-numpy==1.24.2
+numpy==1.23
 nvidia-cublas-cu11==11.10.3.66
 nvidia-cuda-cupti-cu11==11.7.101
 nvidia-cuda-nvrtc-cu11==11.7.99
