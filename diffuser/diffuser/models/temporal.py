@@ -116,7 +116,7 @@ class TemporalUnet(nn.Module):
         '''
             x : [ batch x horizon x transition ]
         '''
-
+        # breakpoint()
         x = einops.rearrange(x, 'b h t -> b t h')
 
         t = self.time_mlp(time)
