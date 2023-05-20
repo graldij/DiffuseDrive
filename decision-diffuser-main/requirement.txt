@@ -1,6 +1,5 @@
 -f https://download.pytorch.org/whl/torch_stable.html
 numpy==1.23
-gym==0.18.0
 mujoco-py==2.1.2.14
 matplotlib==3.3.4
 torch==1.9.1+cu111
@@ -22,3 +21,4 @@ ml_logger==0.8.69
 jaynes==0.8.11 
 params_proto==2.9.6
 datasets
+gym==0.18.0
