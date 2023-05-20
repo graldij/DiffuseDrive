@@ -6,7 +6,6 @@ from einops.layers.torch import Rearrange
 from einops import rearrange
 import pdb
 from torch.distributions import Bernoulli
-from ldm.modules.attention import CrossAttention
 
 from .helpers import (
     SinusoidalPosEmb,
