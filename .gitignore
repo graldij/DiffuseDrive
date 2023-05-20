@@ -3,8 +3,8 @@ data/
 log/
 .vscode
 __pycache__/
-
-
+logs/
+plot/*
 decision-diffuser-main/code/weights
 decision-diffuser-main/code/log
 decision-diffuser-main/code/analysis/diffuser/*
