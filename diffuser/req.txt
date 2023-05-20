@@ -1,0 +1,23 @@
+numpy
+gym==0.18.0
+mujoco-py==2.0.2.13
+matplotlib==3.3.4
+torch==1.9.1
+typed-argument-parser
+scikit-image==0.17.2
+scikit-video==1.1.11
+gitpython
+einops
+ffmpeg
+ffprobe
+pillow
+tqdm
+pandas
+wandb
+flax >= 0.3.5
+jax <= 0.2.21
+ray==2.0.0
+crcmod # for fast gsutil rsync on large files
+google-api-python-client
+cryptography
+gdown>=4.6.0
