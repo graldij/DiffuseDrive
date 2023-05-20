@@ -6,8 +6,7 @@ import einops
 import pdb
 import diffuser
 from copy import deepcopy
-import logging
-logger = logging.getLogger()
+from logger_module import logger
 
 from .arrays import batch_to_device, to_np, to_device, apply_dict, to_torch
 from .timer import Timer
@@ -44,6 +43,7 @@ class Trainer(object):
         diffusion_model,
         dataset,
         renderer,
+        wandb_run=None,
         ema_decay=0.995,
         train_batch_size=32,
         train_lr=2e-5,
@@ -96,6 +96,8 @@ class Trainer(object):
         self.step = 0
 
         self.device = train_device
+        
+        self.wandb_run = wandb_run
 
     def reset_parameters(self):
         self.ema_model.load_state_dict(self.model.state_dict())
@@ -137,6 +139,9 @@ class Trainer(object):
                 metrics['steps'] = self.step
                 metrics['loss'] = loss.detach().item()
 
+                if self.wandb_run is not None:
+                    self.wandb_run.log({**metrics, 'train/step': self.step})
+            
             # if self.step == 0 and self.sample_freq:
                 # continue
                 # [MOD] No rendering activated

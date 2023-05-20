@@ -8,10 +8,9 @@ os.environ['MUJOCO_PY_MUJOCO_PATH']='/scratch_net/biwidl211/rl_course_10/.mujoco
 
 import diffuser.utils as utils
 import torch
-import logging
+import wandb
 # logging.basicConfig(filename='logs/training.log', encoding='utf-8', level=logging.INFO)
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+from logger_module import logger
 
 def main():
 
@@ -20,6 +19,11 @@ def main():
         config: str = 'config.carla'
 
     args = Parser().parse_args('diffusion')
+
+    # start wandb logging
+    
+    if True:
+        wandb_run = wandb.init(project="diffuse_drive", entity="mleong", config=args)
 
 
     torch.backends.cudnn.benchmark = True
@@ -153,7 +157,7 @@ def main():
 
     diffusion = diffusion_config(model)
 
-    trainer = trainer_config(diffusion, dataset, renderer)
+    trainer = trainer_config(diffusion, dataset, renderer, wandb_run)
 
     # -----------------------------------------------------------------------------#
     # ------------------------ test forward & backward pass -----------------------#
@@ -171,11 +175,13 @@ def main():
     # -----------------------------------------------------------------------------#
 
     n_epochs = int(args.n_train_steps // args.n_steps_per_epoch)
-
+    wandb_run.config.update({"n_epochs": n_epochs})
+    
     logger.info(f'Starting training for {n_epochs} epochs...')
     for i in range(n_epochs):
         trainer.train(n_train_steps=args.n_steps_per_epoch)
 
+    wandb_run.finish()
 
 if __name__ == '__main__':
     print("start main")
