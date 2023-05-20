@@ -9,3 +9,4 @@ decision-diffuser-main/code/weights
 decision-diffuser-main/code/log
 decision-diffuser-main/code/analysis/diffuser/*
 decision-diffuser-main/code/analysis/plot/*
+checkpoint/
