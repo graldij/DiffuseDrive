@@ -11,7 +11,6 @@ import pdb
 
 from .arrays import to_np
 from .video import save_video, save_videos
-from ml_logger import logger
 
 from diffuser.datasets.d4rl import load_environment
 
@@ -172,7 +171,7 @@ class MuJoCoRenderer:
         if savepath is not None:
             fig = plt.figure()
             plt.imshow(images)
-            logger.savefig(savepath, fig)
+            # logger.savefig(savepath, fig)
             print(f'Saved {len(paths)} samples to: {savepath}')
 
         return images

@@ -2,7 +2,6 @@ import os
 import collections
 import importlib
 import pickle
-from ml_logger import logger
 
 def import_class(_class):
     if type(_class) is not str: return _class
@@ -33,7 +32,6 @@ class Config(collections.Mapping):
             print(self)
 
         if savepath is not None:
-            logger.save_pkl(self, savepath)
             print(f'[ utils/config ] Saved config to: {savepath}\n')
 
     def __repr__(self):

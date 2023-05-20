@@ -5,13 +5,13 @@ from copy import deepcopy
 import numpy as np
 import os
 import gym
-from config.locomotion_config import Config
+from config.carla import Config
 from diffuser.utils.arrays import to_torch, to_np, to_device
 from diffuser.datasets.d4rl import suppress_output
 
 def evaluate(**deps):
     from ml_logger import logger, RUN
-    from config.locomotion_config import Config
+    from config.carla import Config
 
     RUN._update(deps)
     Config._update(deps)

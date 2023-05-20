@@ -253,7 +253,7 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
         self.use_padding = use_padding
         self.include_returns = include_returns
         # itr = sequence_dataset(env, self.preprocess_fn)
-        self.dataset = load_dataset("/scratch_net/biwidl216/rl_course_14/project/our_approach/decision-diffuser/code/diffuser/datasets/carla_dataset", "decdiff", streaming=True, split="train")
+        self.dataset = load_dataset("diffuser/datasets/carla_dataset", "decdiff", streaming=True, split="train")
         self.dataset.shuffle(seed=42, buffer_size=50)
         self.img_size = 128
         self.preprocess = transforms.Compose([

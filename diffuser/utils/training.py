@@ -6,11 +6,12 @@ import einops
 import pdb
 import diffuser
 from copy import deepcopy
+import logging
+logger = logging.getLogger()
 
 from .arrays import batch_to_device, to_np, to_device, apply_dict, to_torch
 from .timer import Timer
 from .cloud import sync_logs
-from ml_logger import logger
 import diffuser.utils as utils
 import matplotlib.pyplot as plt
 
@@ -125,17 +126,16 @@ class Trainer(object):
 
             if self.step % self.update_ema_every == 0:
                 self.step_ema()
-
+                
             if self.step % self.save_freq == 0:
                 self.save()
 
             if self.step % self.log_freq == 0:
                 infos_str = ' | '.join([f'{key}: {val:8.4f}' for key, val in infos.items()])
-                logger.print(f'{self.step}: {loss:8.4f} | {infos_str} | t: {timer():8.4f}')
+                logger.info(f'{self.step}: {loss:8.4f} | {infos_str} | t: {timer():8.4f}')
                 metrics = {k:v.detach().item() for k, v in infos.items()}
                 metrics['steps'] = self.step
                 metrics['loss'] = loss.detach().item()
-                logger.log_metrics_summary(metrics, default_stats='mean')
 
             # if self.step == 0 and self.sample_freq:
                 # continue
@@ -164,7 +164,8 @@ class Trainer(object):
             'model': self.model.state_dict(),
             'ema': self.ema_model.state_dict()
         }
-        savepath = os.path.join(self.bucket, logger.prefix, 'checkpoint')
+        # savepath = os.path.join(self.bucket, 'checkpoint')
+        savepath = 'checkpoint'
         os.makedirs(savepath, exist_ok=True)
         # logger.save_torch(data, savepath)
         if self.save_checkpoints:
@@ -172,13 +173,13 @@ class Trainer(object):
         else:
             savepath = os.path.join(savepath, 'state.pt')
         torch.save(data, savepath)
-        logger.print(f'[ utils/training ] Saved model to {savepath}')
+        logger.info(f'[ utils/training ] Saved model to {savepath}')
 
     def load(self):
         '''
             loads model and ema from disk
         '''
-        loadpath = os.path.join(self.bucket, logger.prefix, f'checkpoint/state.pt')
+        # loadpath = os.path.join(self.bucket, logger.prefix, f'checkpoint/state.pt')
         # data = logger.load_torch(loadpath)
         data = torch.load(loadpath)
 
@@ -278,15 +279,16 @@ class Trainer(object):
             for samples in sampled_poses:
                 color = colors.pop()
                 for poses in samples:
-                    dx = np.cos(poses[2] - np.pi/2.0) * 2.0
-                    dy = np.sin(poses[2] - np.pi/2.0) * 2.0
+                    dx = np.cos(poses[2] - np.pi/2.0)
+                    dy = np.sin(poses[2] - np.pi/2.0)
                     ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color=color)
             for samples in batch.trajectories:
                 for poses in samples:
-                    dx = np.cos(poses[2] - np.pi/2.0) * 2.0
-                    dy = np.sin(poses[2] - np.pi/2.0) * 2.0
+                    dx = np.cos(poses[2] - np.pi/2.0) 
+                    dy = np.sin(poses[2] - np.pi/2.0)
                     ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color='g')
             new_file_name = 'plot/result'+str(self.step) +"b" + str(i) +'.png'
+            plt.xlim([-10,10])
             plt.savefig(new_file_name)
             print("saved image", new_file_name)
             ax.cla()
