@@ -454,6 +454,7 @@ class TemporalUnetCarla(nn.Module):
         condition_dropout=0.1,
         calc_energy=False,
         kernel_size=5,
+        past_image_cond = False
     ):
         super().__init__()
 
@@ -470,12 +471,17 @@ class TemporalUnetCarla(nn.Module):
 
         self.time_dim = dim
         self.returns_dim = dim
+        
+        self.past_image_cond = past_image_cond
 
-        # [Mod] Added an image encoder, may change to VAE afterwards
-        self.image_encoder = resnet18(weights='DEFAULT')
-        # TODO: here input output dim is hardcoded
-        # [MOD] mlp to map the concatenated encoded images from past frames
-        self.stacked_img_mlp = nn.Linear(1000 * 4, 1000)
+        if self.past_image_cond:
+            # [Mod] Added an image encoder, may change to VAE afterwards
+            self.image_encoder = resnet18(weights='DEFAULT')
+            for name, param in self.image_encoder.named_parameters():
+                param.requires_grad = False
+            # TODO: here input output dim is hardcoded
+            # [MOD] mlp to map the concatenated encoded images from past frames
+            self.stacked_img_mlp = nn.Linear(1000 * 4, 1000)
 
         self.time_mlp = nn.Sequential(
             SinusoidalPosEmb(dim),
@@ -488,7 +494,7 @@ class TemporalUnetCarla(nn.Module):
         self.condition_dropout = condition_dropout
         self.calc_energy = calc_energy
 
-        if self.returns_condition:
+        if self.returns_condition and self.past_image_cond:
             self.returns_mlp = nn.Sequential(
                         nn.Linear(1, dim),
                         act_fn,
@@ -549,24 +555,25 @@ class TemporalUnetCarla(nn.Module):
         if self.calc_energy:
             x_inp = x
 
-        # images = images.type(torch.FloatTensor)
-        past_time_step = cond.shape[1]
-        stacked_encoded_img = torch.zeros((images.shape[0], past_time_step * 1000), device=x.device).type(x.type())
-        # TODO: add preprocessing?
-        # [Mod] Process images from different timestep with the same resnet, and concatenate them
-        for i in range(past_time_step):
-            current_image = images[:, i]
-            encoded_img = self.image_encoder(current_image)
-            stacked_encoded_img[:, i* 1000 : (i+1) * 1000] = encoded_img
-        # [Mod] apply MLP to map the concatenated encoded images
-        img_cond = self.stacked_img_mlp(stacked_encoded_img)
+        if self.past_image_cond:
+            # images = images.type(torch.FloatTensor)
+            past_time_step = cond.shape[1]
+            stacked_encoded_img = torch.zeros((images.shape[0], past_time_step * 1000), device=x.device).type(x.type())
+            # TODO: add preprocessing?
+            # [Mod] Process images from different timestep with the same resnet, and concatenate them
+            for i in range(past_time_step):
+                current_image = images[:, i]
+                encoded_img = self.image_encoder(current_image)
+                stacked_encoded_img[:, i* 1000 : (i+1) * 1000] = encoded_img
+            # [Mod] apply MLP to map the concatenated encoded images
+            img_cond = self.stacked_img_mlp(stacked_encoded_img)
 
         # x = x.type(torch.FloatTensor)
         x = einops.rearrange(x, 'b h t -> b t h')
 
         t = self.time_mlp(time)
 
-        if self.returns_condition:
+        if self.returns_condition and self.past_image_cond:
             assert images is not None
             if use_dropout:
                 # [Mod] Change the return into encoded images

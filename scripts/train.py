@@ -75,6 +75,7 @@ def main():
             condition_dropout=args.condition_dropout,
             calc_energy=args.calc_energy,
             device=args.device,
+            past_image_cond = args.past_image_cond,
         )
 
         diffusion_config = utils.Config(

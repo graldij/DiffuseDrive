@@ -37,7 +37,8 @@ base = {
         "condition_dropout": 0.25,
         "condition_guidance_w": 1.2,
         "test_ret": 0.9,
-        "renderer": "utils.MuJoCoRenderer", 
+        "renderer": "utils.MuJoCoRenderer",
+        "past_image_cond": False, 
 
         ## dataset
         "dataset": 'carla-expert',
