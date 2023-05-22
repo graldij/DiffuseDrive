@@ -10,3 +10,5 @@ decision-diffuser-main/code/log
 decision-diffuser-main/code/analysis/diffuser/*
 decision-diffuser-main/code/analysis/plot/*
 checkpoint/
+diffuser/__init__.pyc
+diffuser/*/__init__.pyc
