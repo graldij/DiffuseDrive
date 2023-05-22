@@ -117,11 +117,15 @@ class Trainer(object):
         timer = Timer()
         for step in range(n_train_steps):
             for i in range(self.gradient_accumulate_every):
+
                 batch = next(self.dataloader)
+                # print("after load batch", timer(True))
                 batch = batch_to_device(batch, device=self.device)
+                # print("after batch to device", timer(True))
                 loss, infos = self.model.loss(*batch)
                 loss = loss / self.gradient_accumulate_every
                 loss.backward()
+                # print("afterloss ", timer(True))
 
             self.optimizer.step()
             self.optimizer.zero_grad()
@@ -239,10 +243,12 @@ class Trainer(object):
             batch = self.dataloader_vis.__next__()
             trajectories = to_device(batch.trajectories, self.device)
             conditions = to_device(batch.conditions, self.device)
-            images = to_device(batch.images, self.device)
+            if hasattr(batch, "images"):
+                images = to_device(batch.images, self.device)
+                images = einops.repeat(images, 'b t h w d -> (repeat b) t h w d', repeat = n_samples)
             ## repeat each item in conditions `n_samples` times
             conditions = einops.repeat(conditions, 'b t d -> (repeat b) t d', repeat =n_samples)
-            images = einops.repeat(images, 'b t h w d -> (repeat b) t h w d', repeat = n_samples)
+            
             # print(conditions.shape)
             ## [ n_samples x horizon x (action_dim + observation_dim) ]
 
@@ -251,7 +257,10 @@ class Trainer(object):
             else:
                 returns = None
 
-            samples = self.ema_model.conditional_sample(conditions, images=images)
+            if hasattr(batch, "images"):
+                samples = self.ema_model.conditional_sample(conditions, images=images)
+            else:
+                samples = self.ema_model.conditional_sample(conditions, images=None)
 
             samples = to_np(samples)
 
