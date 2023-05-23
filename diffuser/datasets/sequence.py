@@ -242,7 +242,7 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
 
     def __init__(self, env='carla-expert', horizon=64,
         normalizer='LimitsNormalizer', preprocess_fns=[], max_path_length=1000,
-        max_n_episodes=10000, termination_penalty=0, use_padding=True, discount=0.99, returns_scale=1000, include_returns=False):
+        max_n_episodes=10000, termination_penalty=0, use_padding=True, discount=0.99, returns_scale=1000, include_returns=False, past_image_cond = True):
         self.preprocess_fn = get_preprocess_fn(preprocess_fns, env)
         # self.env = env = load_environment(env)
         self.returns_scale = returns_scale
@@ -253,7 +253,11 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
         self.use_padding = use_padding
         self.include_returns = include_returns
         # itr = sequence_dataset(env, self.preprocess_fn)
-        self.dataset = load_dataset("diffuser/datasets/carla_dataset", "decdiff", streaming=True, split="train")
+        self.past_image_cond = past_image_cond
+        if past_image_cond:
+            self.dataset = load_dataset("diffuser/datasets/carla_dataset", "decdiff", streaming=True, split="train")
+        else:
+            self.dataset = load_dataset("diffuser/datasets/carla_dataset", "waypoint_unconditioned", streaming=True, split="train")
         self.dataset.shuffle(seed=42, buffer_size=50)
         self.img_size = 128
         self.preprocess = transforms.Compose([
@@ -328,15 +332,17 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
         # actions = self.fields.normed_actions[path_ind, start:end]
 
         for i in self.dataset.iter(1):
-            observations = i["observations"]
             actions = i["actions"]
-
-            image = np.array(self.preprocess(observations[0][0].convert("RGB")))
-            image = image[np.newaxis, :]
-            for img_temp in observations[0][1:]:
-                unsqueezed_image = np.array(self.preprocess(img_temp.convert("RGB")))[np.newaxis, :]
-                image = np.append(image, unsqueezed_image, axis = 0)
             trajectories = np.array(actions).squeeze(0)
             conditions = trajectories[:4, :].copy()
-            batch = ImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32))
+
+            if self.past_image_cond:
+                observations = i["observations"]
+                image = np.zeros((len(observations[0]), 3, self.img_size, self.img_size))
+                for t, img_temp in enumerate(observations[0][:]):
+                    unsqueezed_image = np.array(img_temp)[np.newaxis, :].transpose((0,3,1,2))
+                    image[t] = unsqueezed_image
+                batch = ImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32))
+            else:
+                batch = Batch(trajectories.astype(np.float32), conditions.astype(np.float32))
             yield batch

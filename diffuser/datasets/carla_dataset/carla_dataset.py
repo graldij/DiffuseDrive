@@ -13,7 +13,7 @@ class CarlaDatasetConfig(datasets.BuilderConfig):
             name, 
             description, 
             base_dir, 
-            img_buffer_size, 
+            img_buffer_size = 3, 
             waypoint_buffer_size = 3, 
             waypoint_prediction_size = 6, 
             img_future_size = 6,
@@ -49,13 +49,13 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
         CarlaDatasetConfig(
             name="unconditioned",
             description="Image only datas for unconditioned diffusion",
-            base_dir="/srv/beegfs02/scratch/rl_course/data/proj-diffuse-drive/dataset",
+            base_dir="/scratch_net/biwidl216/rl_course_14/extracted_diffusedrive_dataset_rgb",
             img_buffer_size = 0
         ),
         CarlaDatasetConfig(
             name="waypoint_imageConditioned",
             description="Data for imaged conditioned waypoint diffusion",
-            base_dir="/srv/beegfs02/scratch/rl_course/data/proj-diffuse-drive/dataset",
+            base_dir="/scratch_net/biwidl216/rl_course_14/extracted_diffusedrive_dataset_rgb",
             img_buffer_size = 4,
             waypoint_buffer_size = 4,
             waypoint_prediction_size = 6,
@@ -65,10 +65,19 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
         CarlaDatasetConfig(
             name="decdiff",
             description="format for decdiff trainer",
-            base_dir="/srv/beegfs02/scratch/rl_course/data/proj-diffuse-drive/dataset",
+            base_dir="/scratch_net/biwidl216/rl_course_14/extracted_diffusedrive_dataset_rgb",
             horizon = 12,
             img_buffer_size = 3,
-            img_future_size = 8,
+            img_future_size = 0,
+            waypoint_buffer_size = 3,
+            waypoint_prediction_size = 8,
+            high_level_cmd_size = 1
+        ),
+        CarlaDatasetConfig(
+            name="waypoint_unconditioned",
+            description="format for decdiff trainer",
+            base_dir="/scratch_net/biwidl216/rl_course_14/extracted_diffusedrive_dataset_rgb",
+            horizon = 12,
             waypoint_buffer_size = 3,
             waypoint_prediction_size = 8,
             high_level_cmd_size = 1
@@ -102,6 +111,14 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                 description="Dataset collected from carla",
                 features=datasets.Features(features),
                 supervised_keys=("waypoints","image")
+            )
+        elif self.config.name =="waypoint_unconditioned":
+            features ={
+                "actions": datasets.Sequence(datasets.Array2D(shape=(1,3), dtype=float), self.config.horizon)
+            }
+            return datasets.DatasetInfo(
+                description="Data with only waypoints",
+                features=datasets.Features(features)
             )
         else:
             features ={
@@ -188,29 +205,14 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
 
                         
                         current_img = Image.open(file_path_rgb_front)
-                        current_json = json.load(open(file_path_measurements))
-                        current_waypoint_gps = numpy.array([current_json["gps_x"], current_json["gps_y"], current_json["theta"]])
-                        current_waypoint_ego = numpy.array([0.0, 0.0, 0.0])
-
-                        valid_data_flag = True
-                        past_waypoint_gps, past_waypoint_flag = self.get_past_waypoint_gps(file_id, folder_path_measurements)
-                        past_waypoint_ego = self.convert_gps_to_ego(past_waypoint_gps, current_waypoint_gps)
-                        future_waypoint_gps, future_waypoint_flag = self.get_future_waypoint_gps(file_id, folder_path_measurements)
-                        future_waypoint_ego = self.convert_gps_to_ego(future_waypoint_gps, current_waypoint_gps)
-                        high_level_cmd_gps = self.get_high_level_cmd_gps(file_id, folder_path_measurements)
+                        action_list, waypoint_flag = self.get_action_list(file_path_measurements, file_id, folder_path_measurements)
                         # TODO: change this high_level_cmd last dim is command not orientation
-                        high_level_cmd_ego = self.convert_high_level_cmd_to_ego(high_level_cmd_gps, current_waypoint_gps)
+                        # high_level_cmd_ego = self.convert_high_level_cmd_to_ego(high_level_cmd_gps, current_waypoint_gps)
                         past_img, past_img_flag = self.get_past_img(file_id, folder_path_rgb_front)
                         future_img, future_img_flag = self.get_future_img(file_id, folder_path_rgb_front)
 
-                        if past_waypoint_flag * future_waypoint_flag * past_img_flag * future_img_flag < 1:
+                        if waypoint_flag * past_img_flag * future_img_flag < 1:
                             continue
-                        action_list = []
-                        for i in reversed(past_waypoint_ego):
-                            action_list.append(i[0])
-                        action_list.append(current_waypoint_ego)
-                        for i in future_waypoint_ego:
-                            action_list.append(i[0])
                         
                         image_list = []
                         for i in reversed(past_img):
@@ -221,6 +223,42 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
 
                         # Copy the image to the merged directory with a unique name
                         output= {"actions": action_list, "observations": image_list}
+                        new_name = f"{folder_name_weather}_{folder_name_route}_{file_name_no_suffix}"
+                        yield new_name, output
+        elif self.config.name == "waypoint_unconditioned":
+            for folder_name_weather in os.listdir(base_dir):
+                folder_path = os.path.join(base_dir, folder_name_weather)
+                folder_path = os.path.join(folder_path, "data")
+                # Only process folders, not files
+                if not os.path.isdir(folder_path):
+                    continue
+                
+                for folder_name_route in os.listdir(folder_path):
+                    folder_path_current = os.path.join(folder_path, folder_name_route)
+                    folder_path_measurements = os.path.join(folder_path_current, "measurements")
+                    
+                    if not os.path.isdir(folder_path_measurements):
+                        continue
+                
+                    # Loop through each file in the folder
+                    for file_name in os.listdir(folder_path_measurements):
+                        file_path_measurements = os.path.join(folder_path_measurements, file_name)
+                        
+                        file_name_no_suffix, _ = os.path.splitext(file_name)
+                        file_id = int(file_name_no_suffix)
+                        # Only process image files and ensure the corresponding measurements file exist
+                        if not file_name.endswith(".json"):
+                            continue
+
+                        action_list, waypoint_flag = self.get_action_list(file_path_measurements, file_id, folder_path_measurements)
+                        high_level_cmd_gps = self.get_high_level_cmd_gps(file_id, folder_path_measurements)
+
+                        if not waypoint_flag:
+                            continue
+
+
+                        # Copy the image to the merged directory with a unique name
+                        output= {"actions": action_list}
                         new_name = f"{folder_name_weather}_{folder_name_route}_{file_name_no_suffix}"
                         yield new_name, output
         else:
@@ -254,14 +292,17 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                         
                         current_img = Image.open(file_path_rgb_front)
                         current_json = json.load(open(file_path_measurements))
-                        current_waypoint_gps = numpy.array([current_json["gps_x"], current_json["gps_y"], current_json["theta"]])
-                        current_waypoint_ego = numpy.array([0.0, 0.0, 0.0])
 
-                        past_waypoint_gps = self.get_past_waypoint_gps(file_id, folder_path_measurements)
-                        past_waypoint_ego = self.convert_gps_to_ego(past_waypoint_gps, current_waypoint_gps)
-                        future_waypoint_gps = self.get_future_waypoint_gps(file_id, folder_path_measurements)
-                        future_waypoint_ego = self.convert_gps_to_ego(future_waypoint_gps, current_waypoint_gps)
-                        high_level_cmd_gps = self.get_high_level_cmd_gps(file_id, folder_path_measurements)
+            
+                        if (current_json.get('ego_x') is None):
+                            current_waypoint_gps = numpy.array([current_json["gps_x"], current_json["gps_y"], current_json["theta"]])
+                            current_waypoint_ego = numpy.array([0.0, 0.0, 0.0])
+
+                            past_waypoint_gps = self.get_past_waypoint_gps(file_id, folder_path_measurements)
+                            past_waypoint_ego = self.convert_gps_to_ego(past_waypoint_gps, current_waypoint_gps)
+                            future_waypoint_gps = self.get_future_waypoint_gps(file_id, folder_path_measurements)
+                            future_waypoint_ego = self.convert_gps_to_ego(future_waypoint_gps, current_waypoint_gps)
+                            high_level_cmd_gps = self.get_high_level_cmd_gps(file_id, folder_path_measurements)
                         # TODO: change this high_level_cmd last dim is command not orientation
                         high_level_cmd_ego = self.convert_high_level_cmd_to_ego(high_level_cmd_gps, current_waypoint_gps)
                         past_img = self.get_past_img(file_id, folder_path_rgb_front)
@@ -277,6 +318,38 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                         new_name = f"{folder_name_weather}_{folder_name_route}_{file_name_no_suffix}"
                         yield new_name, output
 
+    def get_action_list(self, file_path_measurements, file_id, folder_path_measurements):
+        current_json = json.load(open(file_path_measurements))
+        # NOT in use, since at every waypoint the ego pose will change, so have to save the whole horizon for each data point.
+        if (current_json.get('ego_x') is None):
+            current_waypoint_gps = numpy.array([current_json["gps_x"], current_json["gps_y"], current_json["theta"]])
+            current_waypoint_ego = numpy.array([0.0, 0.0, 0.0])
+
+            valid_data_flag = True
+            past_waypoint_gps, past_waypoint_flag = self.get_past_waypoint_gps(file_id, folder_path_measurements)
+            past_waypoint_ego = self.convert_gps_to_ego(past_waypoint_gps, current_waypoint_gps)
+            future_waypoint_gps, future_waypoint_flag = self.get_future_waypoint_gps(file_id, folder_path_measurements)
+            future_waypoint_ego = self.convert_gps_to_ego(future_waypoint_gps, current_waypoint_gps)
+
+            if future_waypoint_flag * past_waypoint_flag < 1:
+                return None, False
+
+        else:
+            current_waypoint_ego = numpy.array([0.0, 0.0, 0.0])
+            past_waypoint_ego, past_waypoint_flag = self.get_past_waypoint_ego(file_id, folder_path_measurements)
+            future_waypoint_ego, future_waypoint_flag = self.get_future_waypoint_ego(file_id, folder_path_measurements)
+
+            if past_waypoint_flag * future_waypoint_flag < 1:
+                return None, False
+
+        action_list = []
+        for i in reversed(past_waypoint_ego):
+            action_list.append(i[0])
+        action_list.append(current_waypoint_ego)
+        for i in future_waypoint_ego:
+            action_list.append(i[0])
+        return action_list, True
+
     def get_past_waypoint_gps(self, file_id, folder_path):
         past_waypoint_gps = [None] * self.config.waypoint_buffer_size
         for t in range(self.config.waypoint_buffer_size):
@@ -291,6 +364,22 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
         
         return past_waypoint_gps, True
 
+    def get_past_waypoint_ego(self, file_id, folder_path):
+        past_waypoint_ego = [None] * self.config.waypoint_buffer_size
+        for t in range(self.config.waypoint_buffer_size):
+            previous_file_id = file_id - t - 1
+            previous_file_path_measurements = os.path.join(folder_path, str(previous_file_id).zfill(4) + ".json")
+                        
+            if not os.path.exists(previous_file_path_measurements):
+                return past_waypoint_ego, False
+
+            previous_json = json.load(open(previous_file_path_measurements))
+            if (previous_json.get('ego_x') is None):
+                return past_waypoint_ego, False
+
+            past_waypoint_ego[t] = numpy.array([previous_json["ego_x"], previous_json["ego_y"], previous_json["ego_theta"]])
+        
+        return past_waypoint_ego, True
 
     def get_future_waypoint_gps(self, file_id, folder_path):
         future_waypoint_gps = [None] * self.config.waypoint_prediction_size
@@ -305,6 +394,22 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
             future_waypoint_gps[t] = numpy.array([next_json["gps_x"], next_json["gps_y"], next_json["theta"]])
         
         return future_waypoint_gps, True
+
+    def get_future_waypoint_ego(self, file_id, folder_path):
+        future_waypoint_ego = [None] * self.config.waypoint_prediction_size
+        for t in range(self.config.waypoint_prediction_size):
+            next_file_id = file_id + t + 1
+            next_file_path_measurements = os.path.join(folder_path, str(next_file_id).zfill(4) + ".json")
+                        
+            if not os.path.exists(next_file_path_measurements):
+                return future_waypoint_ego, False
+
+            next_json = json.load(open(next_file_path_measurements))
+            if (next_json.get('ego_x') is None):
+                return future_waypoint_ego, False
+            future_waypoint_ego[t] = numpy.array([next_json["ego_x"], next_json["ego_y"], next_json["ego_theta"]])
+        
+        return future_waypoint_ego, True
 
     def get_high_level_cmd_gps(self, file_id, folder_path):
         high_level_cmd_gps = [None] * self.config.high_level_cmd_size
