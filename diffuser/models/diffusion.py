@@ -912,7 +912,8 @@ class GaussianInvDynDiffusionCarla(nn.Module):
 
         ## get loss coefficients and initialize objective
         loss_weights = self.get_loss_weights(loss_discount)
-        self.loss_fn = Losses['state_l2'](loss_weights)
+        # TODO Jacopo: rn loss is hardcoded to state_l2, while it should be a parameter (since it is still set in the config carla.py)
+        self.loss_fn = Losses['state_l2'](loss_weights) 
 
     def get_loss_weights(self, discount):
         '''
@@ -1049,6 +1050,7 @@ class GaussianInvDynDiffusionCarla(nn.Module):
 
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
         # TODO: Change this to properly load based on the data loaded/config
+        # TODO Jacopo: change to cond to be consistent in how we condition on past waypoints
         x_noisy[:, 0:4, :] = x_start[:, 0:4, :]
 
         # [Note]here returns is the images
@@ -1068,30 +1070,31 @@ class GaussianInvDynDiffusionCarla(nn.Module):
 
     def loss(self, x, cond, returns=None):
         if self.train_only_inv:
-            # Calculating inv loss
-            x_t = x[:, :-1, self.action_dim:]
-            a_t = x[:, :-1, :self.action_dim]
-            x_t_1 = x[:, 1:, self.action_dim:]
-            x_comb_t = torch.cat([x_t, x_t_1], dim=-1)
-            x_comb_t = x_comb_t.reshape(-1, 2 * self.observation_dim)
-            a_t = a_t.reshape(-1, self.action_dim)
-            if self.ar_inv:
-                loss = self.inv_model.calc_loss(x_comb_t, a_t)
-                info = {'a0_loss':loss}
-            else:
-                pred_a_t = self.inv_model(x_comb_t)
-                loss = F.mse_loss(pred_a_t, a_t)
-                info = {'a0_loss': loss}
+            # # Calculating inv loss
+            # x_t = x[:, :-1, self.action_dim:]
+            # a_t = x[:, :-1, :self.action_dim]
+            # x_t_1 = x[:, 1:, self.action_dim:]
+            # x_comb_t = torch.cat([x_t, x_t_1], dim=-1)
+            # x_comb_t = x_comb_t.reshape(-1, 2 * self.observation_dim)
+            # a_t = a_t.reshape(-1, self.action_dim)
+            # if self.ar_inv:
+            #     loss = self.inv_model.calc_loss(x_comb_t, a_t)
+            #     info = {'a0_loss':loss}
+            # else:
+            #     pred_a_t = self.inv_model(x_comb_t)
+            #     loss = F.mse_loss(pred_a_t, a_t)
+            #     info = {'a0_loss': loss}
+            raise NotImplementedError
         else:
             batch_size = len(x)
             t = torch.randint(0, self.n_timesteps, (batch_size,), device=x.device).long()
             diffuse_loss, info = self.p_losses(x[:, :, self.action_dim:], cond, t, returns)
             # Calculating inv loss
-            x_t = x[:, :-1, self.action_dim:]
-            a_t = x[:, :-1, :self.action_dim]
-            x_t_1 = x[:, 1:, self.action_dim:]
-            x_comb_t = torch.cat([x_t, x_t_1], dim=-1)
-            x_comb_t = x_comb_t.reshape(-1, 2 * self.observation_dim)
+            # x_t = x[:, :-1, self.action_dim:]
+            # a_t = x[:, :-1, :self.action_dim]
+            # x_t_1 = x[:, 1:, self.action_dim:]
+            # x_comb_t = torch.cat([x_t, x_t_1], dim=-1)
+            # x_comb_t = x_comb_t.reshape(-1, 2 * self.observation_dim)
             # [Mod] Disable the following for inverse dynamic model
             # a_t = a_t.reshape(-1, self.action_dim)
             # if self.ar_inv:
