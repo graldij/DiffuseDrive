@@ -349,8 +349,13 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
                     observations = i["observations"]
                     image = np.zeros((len(observations[0]), 3, self.img_size, self.img_size))
                     for t, img_temp in enumerate(observations[0][:]):
-                        unsqueezed_image = np.array(img_temp)[np.newaxis, :].transpose((0,3,1,2))
-                        image[t] = unsqueezed_image
+                        # Normalization from Resnet18. img_tmp loaded as PIL so convert to tensor between 0 and 1, and normalize
+                        normalization = transforms.Compose([ transforms.ToTensor(),
+                                                            transforms.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
+                                                            ])
+                        # unsqueezed_image = np.array(img_temp)[np.newaxis, :].transpose((0,3,1,2))
+                        unsqueezed_image = normalization(img_temp)
+                        image[t] = unsqueezed_image.unsqueeze(0)
                     batch = ImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32))
                 else:
                     batch = Batch(trajectories.astype(np.float32), conditions.astype(np.float32))
