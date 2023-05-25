@@ -1,7 +1,7 @@
 import sys
 import os
 # caution: path[0] is reserved for script path (or '' in REPL)
-os.environ['MUJOCO_PY_MUJOCO_PATH']='/scratch_net/biwidl216/rl_course_14/.mujoco/mujoco210'
+os.environ['MUJOCO_PY_MUJOCO_PATH']='/scratch_net/biwidl211/rl_course_10/.mujoco/mujoco210'
 
 #add DiffuseDrive to path. Dont know why, but else diffuser folder is not seen.
 # os.environ['PYTHONPATH'] = str(os.environ['PYTHONPATH']) + '~/DiffuseDrive'
@@ -115,6 +115,7 @@ def main():
             calc_energy=args.calc_energy,
             device=args.device,
             past_image_cond = args.past_image_cond,
+            resnet_freeze = args.resnet_freeze,
             # attention??
         )
 

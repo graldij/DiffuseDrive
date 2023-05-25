@@ -454,7 +454,8 @@ class TemporalUnetCarla(nn.Module):
         condition_dropout=0.1,
         calc_energy=False,
         kernel_size=5,
-        past_image_cond = False
+        past_image_cond = False,
+        resnet_freeze = True,
     ):
         super().__init__()
 
@@ -475,13 +476,11 @@ class TemporalUnetCarla(nn.Module):
         self.past_image_cond = past_image_cond
 
         if self.past_image_cond:
-            # [Mod] Added an image encoder, may change to VAE afterwards
-            self.image_encoder = resnet18(weights='DEFAULT')
-            for name, param in self.image_encoder.named_parameters():
-                param.requires_grad = False
+            self.image_encoder = FeatureExtractorResnet(freeze=resnet_freeze)
+
             # TODO: here input output dim is hardcoded
             # [MOD] mlp to map the concatenated encoded images from past frames
-            self.stacked_img_mlp = nn.Linear(1000 * 4, 1000)
+            self.stacked_img_mlp = nn.Linear(512 * 4, 512)
 
         self.time_mlp = nn.Sequential(
             SinusoidalPosEmb(dim),
@@ -503,7 +502,7 @@ class TemporalUnetCarla(nn.Module):
                         nn.Linear(dim * 4, dim),
                     )
             self.mask_dist = Bernoulli(probs=1-self.condition_dropout)
-            embed_dim = dim + 1000
+            embed_dim = dim + 512 # TODO Jacopo this is hardcoded and should be changed
             # embed_dim = 2*dim
         else:
             embed_dim = dim
@@ -558,13 +557,15 @@ class TemporalUnetCarla(nn.Module):
         if self.past_image_cond:
             # images = images.type(torch.FloatTensor)
             past_time_step = cond.shape[1]
-            stacked_encoded_img = torch.zeros((images.shape[0], past_time_step * 1000), device=x.device).type(x.type())
+            stacked_encoded_img = torch.zeros((images.shape[0], past_time_step * 512), device=x.device).type(x.type())
             # TODO: add preprocessing?
+            # TODO Jacopo: avoid hardcoded dimensions
             # [Mod] Process images from different timestep with the same resnet, and concatenate them
+            # breakpoint()
             for i in range(past_time_step):
                 current_image = images[:, i]
                 encoded_img = self.image_encoder(current_image)
-                stacked_encoded_img[:, i* 1000 : (i+1) * 1000] = encoded_img
+                stacked_encoded_img[:, i* 512 : (i+1) * 512] = encoded_img.squeeze()
             # [Mod] apply MLP to map the concatenated encoded images
             img_cond = self.stacked_img_mlp(stacked_encoded_img)
 
@@ -578,6 +579,7 @@ class TemporalUnetCarla(nn.Module):
             if use_dropout:
                 # [Mod] Change the return into encoded images
                 # TODO: unsure if this is the right way for the mask, mask shape = (batch_size, 1), remove some of the input from a batch?
+                # TODO Jacopo check here if dimensions are ok
                 mask = self.mask_dist.sample(sample_shape=(img_cond.size(0), 1)).to(img_cond.device)
                 img_cond = mask*img_cond
             if force_dropout:
@@ -658,4 +660,19 @@ class TemporalUnetCarla(nn.Module):
 
         x = einops.rearrange(x, 'b t h -> b h t')
 
+        return x
+    
+    
+    
+class FeatureExtractorResnet(nn.Module):
+    def __init__(self, pretrained=True, freeze=True):
+        super().__init__()
+        full_resnet = resnet18(weights='DEFAULT')
+        self.backbone = nn.Sequential(*list(full_resnet.children())[:-1])
+        
+        for name, param in self.backbone.named_parameters():
+                param.requires_grad = freeze
+
+    def forward(self, x):
+        x = self.backbone(x)
         return x
