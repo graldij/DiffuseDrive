@@ -122,6 +122,7 @@ class Trainer(object):
                 # print("after load batch", timer(True))
                 batch = batch_to_device(batch, device=self.device)
                 # print("after batch to device", timer(True))
+                # breakpoint()
                 loss, infos = self.model.loss(*batch)
                 loss = loss / self.gradient_accumulate_every
                 loss.backward()
@@ -298,18 +299,19 @@ class Trainer(object):
             for samples in sampled_poses:
                 color = colors.pop()
                 for poses in samples:
+                    
                     dx = np.cos(poses[2] - np.pi/2.0)
                     dy = np.sin(poses[2] - np.pi/2.0)
-                    ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color=color)
+                    ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color=color, alpha=0.5)
             for samples in batch.trajectories:
                 for poses in samples:
                     dx = np.cos(poses[2] - np.pi/2.0) 
                     dy = np.sin(poses[2] - np.pi/2.0)
-                    ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color='g')
+                    ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color='g', alpha=0.5)
 
             if not os.path.exists('plot/'+ self.wandb_run.id):
                 os.makedirs('plot/'+ self.wandb_run.id)
-            new_file_name = 'plot/'+ self.wandb_run.id +  '/result'+str(self.step) +"b" + str(i) +'.png'
+            new_file_name = 'plot/'+ self.wandb_run.id +  '/result'+str(self.step) +"b" + str(i) +'.pdf'
             # plt.xlim([-10,10])
             # plt.autoscale_view()
             plt.autoscale(enable=True)
