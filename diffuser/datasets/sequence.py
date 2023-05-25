@@ -338,6 +338,11 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
             if trajectories[:,:-1].max() <= 1e-6:
                 continue
             else:
+                # Normalize waypoints
+                traj_mean = np.array([-1.4380759e-02, -4.2510300e+00, 1.1896066e-03])
+                traj_std = np.array([1.3787538, 7.970438, 0.19030738])
+                trajectories = (trajectories - traj_mean)/traj_std
+                
                 conditions = trajectories[:4, :].copy()
                 
                 if self.past_image_cond:

@@ -270,6 +270,13 @@ class Trainer(object):
 
             ## [ n_samples x horizon x observation_dim ]
             normed_observations = samples[:, :, self.dataset.action_dim:]
+            
+            # TODO Jacopo improve this
+            # de-normalize observations
+            traj_mean = np.array([-1.4380759e-02, -4.2510300e+00, 1.1896066e-03])
+            traj_std = np.array([1.3787538, 7.970438, 0.19030738])
+            sampled_poses = normed_observations* traj_std + traj_mean
+            true_trajectories = batch.trajectories* traj_std + traj_mean
 
             # # [ 1 x 1 x observation_dim ]
             # normed_conditions = to_np(batch.conditions[0])[:,None]
@@ -294,7 +301,7 @@ class Trainer(object):
             # ax = plt.axes()
             fig, ax = plt.subplots()
             
-            sampled_poses = normed_observations
+            
             colors = ['r', 'y']
             for samples in sampled_poses:
                 color = colors.pop()
@@ -303,7 +310,8 @@ class Trainer(object):
                     dx = np.cos(poses[2] - np.pi/2.0)
                     dy = np.sin(poses[2] - np.pi/2.0)
                     ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color=color, alpha=0.5)
-            for samples in batch.trajectories:
+            # for samples in batch.trajectories:
+            for samples in true_trajectories:
                 for poses in samples:
                     dx = np.cos(poses[2] - np.pi/2.0) 
                     dy = np.sin(poses[2] - np.pi/2.0)
