@@ -64,11 +64,49 @@ def main():
     # ------------------------------ model & trainer ------------------------------#
     # -----------------------------------------------------------------------------#
     if args.diffusion == 'models.GaussianInvDynDiffusion':
+        # model_config = utils.Config(
+        #     args.model,
+        #     savepath='model_config.pkl',
+        #     horizon=args.horizon,
+        #     transition_dim=observation_dim,
+        #     cond_dim=observation_dim,
+        #     dim_mults=args.dim_mults,
+        #     returns_condition=args.returns_condition,
+        #     dim=args.dim,
+        #     condition_dropout=args.condition_dropout,
+        #     calc_energy=args.calc_energy,
+        #     device=args.device,
+        #     past_image_cond = args.past_image_cond,
+        # )
+
+        # diffusion_config = utils.Config(
+        #     args.diffusion,
+        #     savepath='diffusion_config.pkl',
+        #     horizon=args.horizon,
+        #     observation_dim=observation_dim,
+        #     action_dim=action_dim,
+        #     n_timesteps=args.n_diffusion_steps,
+        #     loss_type=args.loss_type,
+        #     clip_denoised=args.clip_denoised,
+        #     predict_epsilon=args.predict_epsilon,
+        #     hidden_dim=args.hidden_dim,
+        #     ar_inv=args.ar_inv,
+        #     train_only_inv=args.train_only_inv,
+        #     ## loss weighting
+        #     action_weight=args.action_weight,
+        #     loss_weights=args.loss_weights,
+        #     loss_discount=args.loss_discount,
+        #     returns_condition=args.returns_condition,
+        #     condition_guidance_w=args.condition_guidance_w,
+        #     device=args.device,
+        # )
+        raise NotImplementedError
+    else:
         model_config = utils.Config(
             args.model,
             savepath='model_config.pkl',
             horizon=args.horizon,
-            transition_dim=observation_dim,
+            transition_dim=observation_dim + action_dim,
             cond_dim=observation_dim,
             dim_mults=args.dim_mults,
             returns_condition=args.returns_condition,
@@ -77,6 +115,7 @@ def main():
             calc_energy=args.calc_energy,
             device=args.device,
             past_image_cond = args.past_image_cond,
+            # attention??
         )
 
         diffusion_config = utils.Config(
@@ -92,39 +131,6 @@ def main():
             hidden_dim=args.hidden_dim,
             ar_inv=args.ar_inv,
             train_only_inv=args.train_only_inv,
-            ## loss weighting
-            action_weight=args.action_weight,
-            loss_weights=args.loss_weights,
-            loss_discount=args.loss_discount,
-            returns_condition=args.returns_condition,
-            condition_guidance_w=args.condition_guidance_w,
-            device=args.device,
-        )
-    else:
-        model_config = utils.Config(
-            args.model,
-            savepath='model_config.pkl',
-            horizon=args.horizon,
-            transition_dim=observation_dim + action_dim,
-            cond_dim=observation_dim,
-            dim_mults=args.dim_mults,
-            returns_condition=args.returns_condition,
-            dim=args.dim,
-            condition_dropout=args.condition_dropout,
-            calc_energy=args.calc_energy,
-            device=args.device,
-        )
-
-        diffusion_config = utils.Config(
-            args.diffusion,
-            savepath='diffusion_config.pkl',
-            horizon=args.horizon,
-            observation_dim=observation_dim,
-            action_dim=action_dim,
-            n_timesteps=args.n_diffusion_steps,
-            loss_type=args.loss_type,
-            clip_denoised=args.clip_denoised,
-            predict_epsilon=args.predict_epsilon,
             ## loss weighting
             action_weight=args.action_weight,
             loss_weights=args.loss_weights,

@@ -122,6 +122,7 @@ class Trainer(object):
                 # print("after load batch", timer(True))
                 batch = batch_to_device(batch, device=self.device)
                 # print("after batch to device", timer(True))
+                # breakpoint()
                 loss, infos = self.model.loss(*batch)
                 loss = loss / self.gradient_accumulate_every
                 loss.backward()
@@ -233,6 +234,7 @@ class Trainer(object):
         savepath = os.path.join('images', f'sample-reference.png')
         # self.renderer.composite(savepath, observations)
 
+    # TODO Jacopo: remove hardcoded stuff and allow for different batch sizes and n_samples
     def render_samples(self, batch_size=2, n_samples=2):
         '''
             renders samples from (ema) diffusion model
@@ -246,18 +248,20 @@ class Trainer(object):
             if hasattr(batch, "images"):
                 images = to_device(batch.images, self.device)
                 images = einops.repeat(images, 'b t h w d -> (repeat b) t h w d', repeat = n_samples)
+            # TODO Jacopo: else statement needed?
             ## repeat each item in conditions `n_samples` times
             conditions = einops.repeat(conditions, 'b t d -> (repeat b) t d', repeat =n_samples)
             
             # print(conditions.shape)
             ## [ n_samples x horizon x (action_dim + observation_dim) ]
 
+            # TODO Jacopo: I guess this is useless?
             if self.ema_model.returns_condition:
                 returns = to_device(torch.ones(n_samples, 1), self.device)
             else:
                 returns = None
 
-            if hasattr(batch, "images"):
+            if hasattr(batch, "images") and self.ema_model.model.past_image_cond:
                 samples = self.ema_model.conditional_sample(conditions, images=images)
             else:
                 samples = self.ema_model.conditional_sample(conditions, images=None)
@@ -287,23 +291,32 @@ class Trainer(object):
             # observations = blocks_add_kuka(observations)
             ####
 
-            ax = plt.axes()
+            # ax = plt.axes()
+            fig, ax = plt.subplots()
+            
             sampled_poses = normed_observations
             colors = ['r', 'y']
             for samples in sampled_poses:
                 color = colors.pop()
                 for poses in samples:
+                    
                     dx = np.cos(poses[2] - np.pi/2.0)
                     dy = np.sin(poses[2] - np.pi/2.0)
-                    ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color=color)
+                    ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color=color, alpha=0.5)
             for samples in batch.trajectories:
                 for poses in samples:
                     dx = np.cos(poses[2] - np.pi/2.0) 
                     dy = np.sin(poses[2] - np.pi/2.0)
-                    ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color='g')
-            new_file_name = 'plot/result'+str(self.step) +"b" + str(i) +'.png'
-            plt.xlim([-10,10])
+                    ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color='g', alpha=0.5)
+
+            if not os.path.exists('plot/'+ self.wandb_run.id):
+                os.makedirs('plot/'+ self.wandb_run.id)
+            new_file_name = 'plot/'+ self.wandb_run.id +  '/result'+str(self.step) +"b" + str(i) +'.pdf'
+            # plt.xlim([-10,10])
+            # plt.autoscale_view()
+            plt.autoscale(enable=True)
             plt.savefig(new_file_name)
+            
             print("saved image", new_file_name)
             ax.cla()
 
