@@ -13,6 +13,7 @@ from .timer import Timer
 from .cloud import sync_logs
 import diffuser.utils as utils
 import matplotlib.pyplot as plt
+from torchvision import transforms
 
 def cycle(dl):
     while True:
@@ -107,6 +108,15 @@ class Trainer(object):
             self.reset_parameters()
             return
         self.ema.update_model_average(self.ema_model, self.model)
+        
+    def images_batch_norm(self, images):
+        # Normalization from Resnet18. img_tmp loaded as PIL then converted to tensor. Therefore first map between 0 and 1, and then normalize
+        normalization = transforms.Compose([transforms.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
+                                            ])
+
+        unsqueezed_images = normalization(images/255)
+        
+        return unsqueezed_images
 
     #-----------------------------------------------------------------------------#
     #------------------------------------ api ------------------------------------#
@@ -122,7 +132,13 @@ class Trainer(object):
                 # print("after load batch", timer(True))
                 batch = batch_to_device(batch, device=self.device)
                 # print("after batch to device", timer(True))
-                # breakpoint()
+                
+                # if conditioning on past images is True, then need to normalize the images
+                if self.model.model.past_image_cond:
+                    normalized_batch = self.images_batch_norm(batch[2])
+                    new_batch = (batch[0], batch[1], normalized_batch)
+                    batch = new_batch
+                    
                 loss, infos = self.model.loss(*batch)
                 loss = loss / self.gradient_accumulate_every
                 loss.backward()
@@ -270,6 +286,13 @@ class Trainer(object):
 
             ## [ n_samples x horizon x observation_dim ]
             normed_observations = samples[:, :, self.dataset.action_dim:]
+            
+            # TODO Jacopo improve this
+            # de-normalize observations
+            traj_mean = np.array([-1.4380759e-02, -4.2510300e+00, 1.1896066e-03])
+            traj_std = np.array([1.3787538, 7.970438, 0.19030738])
+            sampled_poses = normed_observations* traj_std + traj_mean
+            true_trajectories = batch.trajectories* traj_std + traj_mean
 
             # # [ 1 x 1 x observation_dim ]
             # normed_conditions = to_np(batch.conditions[0])[:,None]
@@ -294,7 +317,7 @@ class Trainer(object):
             # ax = plt.axes()
             fig, ax = plt.subplots()
             
-            sampled_poses = normed_observations
+            
             colors = ['r', 'y']
             for samples in sampled_poses:
                 color = colors.pop()
@@ -303,7 +326,8 @@ class Trainer(object):
                     dx = np.cos(poses[2] - np.pi/2.0)
                     dy = np.sin(poses[2] - np.pi/2.0)
                     ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color=color, alpha=0.5)
-            for samples in batch.trajectories:
+            # for samples in batch.trajectories:
+            for samples in true_trajectories:
                 for poses in samples:
                     dx = np.cos(poses[2] - np.pi/2.0) 
                     dy = np.sin(poses[2] - np.pi/2.0)

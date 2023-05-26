@@ -181,7 +181,7 @@ class ValueL2(ValueLoss):
     def _loss(self, pred, targ):
         return F.mse_loss(pred, targ, reduction='none')
 
-Losses = {
+Losses = { # TODO Jacopo: implemented weighted loss of waypoings
     'l1': WeightedL1,
     'l2': WeightedL2,
     'state_l2': WeightedStateL2,
