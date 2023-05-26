@@ -13,6 +13,7 @@ from .timer import Timer
 from .cloud import sync_logs
 import diffuser.utils as utils
 import matplotlib.pyplot as plt
+from torchvision import transforms
 
 def cycle(dl):
     while True:
@@ -107,6 +108,15 @@ class Trainer(object):
             self.reset_parameters()
             return
         self.ema.update_model_average(self.ema_model, self.model)
+        
+    def images_batch_norm(self, images):
+        # Normalization from Resnet18. img_tmp loaded as PIL then converted to tensor. Therefore first map between 0 and 1, and then normalize
+        normalization = transforms.Compose([transforms.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
+                                            ])
+
+        unsqueezed_images = normalization(images/255)
+        
+        return unsqueezed_images
 
     #-----------------------------------------------------------------------------#
     #------------------------------------ api ------------------------------------#
@@ -122,7 +132,13 @@ class Trainer(object):
                 # print("after load batch", timer(True))
                 batch = batch_to_device(batch, device=self.device)
                 # print("after batch to device", timer(True))
-                # breakpoint()
+                
+                # if conditioning on past images is True, then need to normalize the images
+                if self.model.model.past_image_cond:
+                    normalized_batch = self.images_batch_norm(batch[2])
+                    new_batch = (batch[0], batch[1], normalized_batch)
+                    batch = new_batch
+                    
                 loss, infos = self.model.loss(*batch)
                 loss = loss / self.gradient_accumulate_every
                 loss.backward()
