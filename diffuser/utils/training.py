@@ -58,6 +58,8 @@ class Trainer(object):
         ema_decay=0.995,
         train_batch_size=32,
         train_lr=2e-5,
+        lr_decay=0.9,
+        lr_decay_steps = 1000,
         gradient_accumulate_every=2,
         step_start_ema=2000,
         update_ema_every=100,
@@ -98,7 +100,11 @@ class Trainer(object):
             self.dataset, batch_size=1, num_workers=0, pin_memory=True
         ))
         self.renderer = renderer
+        
+        # optimizer and lr scheduler
         self.optimizer = torch.optim.Adam(diffusion_model.parameters(), lr=train_lr)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=lr_decay_steps, gamma=lr_decay)
+        
 
         self.bucket = bucket
         self.n_reference = n_reference
@@ -173,7 +179,7 @@ class Trainer(object):
                 metrics['loss'] = loss.detach().item()
 
                 if self.wandb_run is not None:
-                    self.wandb_run.log({**metrics, 'train/step': self.step})
+                    self.wandb_run.log({**metrics, 'train/step': self.step, 'train/lr': self.scheduler.get_last_lr()[0]})
             
             # if self.step == 0 and self.sample_freq:
                 # continue
@@ -189,7 +195,11 @@ class Trainer(object):
                     pass
                 else:
                     self.render_samples()
-
+                    
+                    
+            # step scheduler for lr decay
+            self.scheduler.step()
+            
             self.step += 1
 
     def save(self):

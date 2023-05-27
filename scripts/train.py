@@ -146,6 +146,8 @@ def main():
         savepath='trainer_config.pkl',
         train_batch_size=args.batch_size,
         train_lr=args.learning_rate,
+        lr_decay=args.lr_decay,
+        lr_decay_steps=args.lr_decay_steps,
         gradient_accumulate_every=args.gradient_accumulate_every,
         ema_decay=args.ema_decay,
         sample_freq=args.sample_freq,
