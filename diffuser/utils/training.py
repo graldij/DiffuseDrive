@@ -156,7 +156,6 @@ class Trainer(object):
                     normalized_batch = self.images_batch_norm(batch.images)
                     new_batch = (batch.trajectories, batch.conditions, normalized_batch)
                     batch = new_batch
-                    
                 loss, infos = self.model.loss(*batch)
                 loss = loss / self.gradient_accumulate_every
                 loss.backward()
@@ -303,10 +302,9 @@ class Trainer(object):
             
             # TODO Jacopo improve this
             # de-normalize observations
-            traj_mean = np.array([-1.4380759e-02, -4.2510300e+00, 1.1896066e-03])
-            traj_std = np.array([1.3787538, 7.970438, 0.19030738])
-            sampled_poses = normed_observations* traj_std + traj_mean
-            true_trajectories = batch.trajectories* traj_std + traj_mean
+            traj_mean, traj_std = self.dataset.get_mean_std_waypoints()
+            sampled_poses = normed_observations * (traj_std + 1e-7) + traj_mean
+            true_trajectories = batch.trajectories * (traj_std + 1e-7) + traj_mean
 
             
             fig, ax = plt.subplots()
@@ -341,56 +339,57 @@ class Trainer(object):
         '''
             renders samples from (ema) diffusion model
         '''
-        for i in range(batch_size):
+        raise NotImplementedError
+        # for i in range(batch_size):
 
-            ## get a single datapoint
-            batch = self.dataloader_vis.__next__()
-            conditions = to_device(batch.conditions, self.device)
-            ## repeat each item in conditions `n_samples` times
-            conditions = apply_dict(
-                einops.repeat,
-                conditions,
-                'b d -> (repeat b) d', repeat=n_samples,
-            )
+        #     ## get a single datapoint
+        #     batch = self.dataloader_vis.__next__()
+        #     conditions = to_device(batch.conditions, self.device)
+        #     ## repeat each item in conditions `n_samples` times
+        #     conditions = apply_dict(
+        #         einops.repeat,
+        #         conditions,
+        #         'b d -> (repeat b) d', repeat=n_samples,
+        #     )
 
-            ## [ n_samples x horizon x (action_dim + observation_dim) ]
-            if self.ema_model.returns_condition:
-                returns = to_device(torch.ones(n_samples, 1), self.device)
-            else:
-                returns = None
+        #     ## [ n_samples x horizon x (action_dim + observation_dim) ]
+        #     if self.ema_model.returns_condition:
+        #         returns = to_device(torch.ones(n_samples, 1), self.device)
+        #     else:
+        #         returns = None
 
-            if self.ema_model.model.calc_energy:
-                samples = self.ema_model.grad_conditional_sample(conditions, returns=returns)
-            else:
-                samples = self.ema_model.conditional_sample(conditions, returns=returns)
+        #     if self.ema_model.model.calc_energy:
+        #         samples = self.ema_model.grad_conditional_sample(conditions, returns=returns)
+        #     else:
+        #         samples = self.ema_model.conditional_sample(conditions, returns=returns)
 
-            samples = to_np(samples)
+        #     samples = to_np(samples)
 
-            ## [ n_samples x horizon x observation_dim ]
-            normed_observations = samples[:, :, :]
+        #     ## [ n_samples x horizon x observation_dim ]
+        #     normed_observations = samples[:, :, :]
 
-            # [ 1 x 1 x observation_dim ]
-            normed_conditions = to_np(batch.conditions[0])[:,None]
+        #     # [ 1 x 1 x observation_dim ]
+        #     normed_conditions = to_np(batch.conditions[0])[:,None]
 
-            # from diffusion.datasets.preprocessing import blocks_cumsum_quat
-            # observations = conditions + blocks_cumsum_quat(deltas)
-            # observations = conditions + deltas.cumsum(axis=1)
+        #     # from diffusion.datasets.preprocessing import blocks_cumsum_quat
+        #     # observations = conditions + blocks_cumsum_quat(deltas)
+        #     # observations = conditions + deltas.cumsum(axis=1)
 
-            ## [ n_samples x (horizon + 1) x observation_dim ]
-            normed_observations = np.concatenate([
-                np.repeat(normed_conditions, n_samples, axis=0),
-                normed_observations
-            ], axis=1)
+        #     ## [ n_samples x (horizon + 1) x observation_dim ]
+        #     normed_observations = np.concatenate([
+        #         np.repeat(normed_conditions, n_samples, axis=0),
+        #         normed_observations
+        #     ], axis=1)
 
-            ## [ n_samples x (horizon + 1) x observation_dim ]
-            observations = normed_observations
-            print(observations)
-            # observations = self.dataset.normalizer.unnormalize(normed_observations, 'observations')
+        #     ## [ n_samples x (horizon + 1) x observation_dim ]
+        #     observations = normed_observations
+        #     print(observations)
+        #     # observations = self.dataset.normalizer.unnormalize(normed_observations, 'observations')
 
-            #### @TODO: remove block-stacking specific stuff
-            # from diffusion.datasets.preprocessing import blocks_euler_to_quat, blocks_add_kuka
-            # observations = blocks_add_kuka(observations)
-            ####
+        #     #### @TODO: remove block-stacking specific stuff
+        #     # from diffusion.datasets.preprocessing import blocks_euler_to_quat, blocks_add_kuka
+        #     # observations = blocks_add_kuka(observations)
+        #     ####
 
-            savepath = os.path.join('images', f'sample-{i}.png')
-            self.renderer.composite(savepath, observations)
+        #     savepath = os.path.join('images', f'sample-{i}.png')
+        #     self.renderer.composite(savepath, observations)
