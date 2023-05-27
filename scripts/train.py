@@ -45,7 +45,8 @@ def main():
         returns_scale=args.returns_scale,
         discount=args.discount,
         termination_penalty=args.termination_penalty,
-        past_image_cond = args.past_image_cond
+        past_image_cond = args.past_image_cond,
+        waypoints_normalization = args.waypoints_normalization,
     )
 
     render_config = utils.Config(
