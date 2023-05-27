@@ -153,8 +153,8 @@ class Trainer(object):
                 
                 # if conditioning on past images is True, then need to normalize the images
                 if self.model.model.past_image_cond:
-                    normalized_batch = self.images_batch_norm(batch[2])
-                    new_batch = (batch[0], batch[1], normalized_batch)
+                    normalized_batch = self.images_batch_norm(batch.images)
+                    new_batch = (batch.trajectories, batch.conditions, normalized_batch)
                     batch = new_batch
                     
                 loss, infos = self.model.loss(*batch)
@@ -283,23 +283,15 @@ class Trainer(object):
             batch = self.dataloader_vis.__next__()
             trajectories = to_device(batch.trajectories, self.device)
             conditions = to_device(batch.conditions, self.device)
-            if hasattr(batch, "images"):
-                images = to_device(batch.images, self.device)
-                images = einops.repeat(images, 'b t h w d -> (repeat b) t h w d', repeat = n_samples)
-            # TODO Jacopo: else statement needed?
-            ## repeat each item in conditions `n_samples` times
+            
             conditions = einops.repeat(conditions, 'b t d -> (repeat b) t d', repeat =n_samples)
             
-            # print(conditions.shape)
-            ## [ n_samples x horizon x (action_dim + observation_dim) ]
-
-            # TODO Jacopo: I guess this is useless?
-            if self.ema_model.returns_condition:
-                returns = to_device(torch.ones(n_samples, 1), self.device)
-            else:
-                returns = None
-
             if hasattr(batch, "images") and self.ema_model.model.past_image_cond:
+                # normalize images used as condition
+                images = self.images_batch_norm(batch.images)
+                
+                images = to_device(images, self.device)
+                images = einops.repeat(images, 'b t h w d -> (repeat b) t h w d', repeat = n_samples)
                 samples = self.ema_model.conditional_sample(conditions, images=images)
             else:
                 samples = self.ema_model.conditional_sample(conditions, images=None)
@@ -316,27 +308,7 @@ class Trainer(object):
             sampled_poses = normed_observations* traj_std + traj_mean
             true_trajectories = batch.trajectories* traj_std + traj_mean
 
-            # # [ 1 x 1 x observation_dim ]
-            # normed_conditions = to_np(batch.conditions[0])[:,None]
-            # # from diffusion.datasets.preprocessing import blocks_cumsum_quat
-            # # observations = conditions + blocks_cumsum_quat(deltas)
-            # # observations = conditions + deltas.cumsum(axis=1)
-
-            # ## [ n_samples x (horizon + 1) x observation_dim ]
-            # normed_observations = np.concatenate([
-            #     np.repeat(normed_conditions, n_samples, axis=0),
-            #     normed_observations
-            # ], axis=1)
-
-            ## [ n_samples x (horizon + 1) x observation_dim ]
-            # observations = self.dataset.normalizer.unnormalize(normed_observations, 'observations')
-
-            #### @TODO: remove block-stacking specific stuff
-            # from diffusion.datasets.preprocessing import blocks_euler_to_quat, blocks_add_kuka
-            # observations = blocks_add_kuka(observations)
-            ####
-
-            # ax = plt.axes()
+            
             fig, ax = plt.subplots()
             
             
@@ -347,13 +319,12 @@ class Trainer(object):
                     
                     dx = np.cos(poses[2] - np.pi/2.0)
                     dy = np.sin(poses[2] - np.pi/2.0)
-                    ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color=color, alpha=0.5)
-            # for samples in batch.trajectories:
+                    ax.arrow(poses[0], poses[1], dx, dy, head_width=0.00, head_length=0.0, color=color, alpha=0.5)
             for samples in true_trajectories:
                 for poses in samples:
                     dx = np.cos(poses[2] - np.pi/2.0) 
                     dy = np.sin(poses[2] - np.pi/2.0)
-                    ax.arrow(poses[0], poses[1], dx, dy, head_width=0.09, head_length=0.1, color='g', alpha=0.5)
+                    ax.arrow(poses[0], poses[1], dx, dy, head_width=0.00, head_length=0.0, color='g', alpha=0.5)
 
             if not os.path.exists('plot/'+ self.wandb_run.id):
                 os.makedirs('plot/'+ self.wandb_run.id)
