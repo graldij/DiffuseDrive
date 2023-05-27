@@ -14,11 +14,21 @@ from .cloud import sync_logs
 import diffuser.utils as utils
 import matplotlib.pyplot as plt
 from torchvision import transforms
+import random
 
 def cycle(dl):
     while True:
         for data in dl:
             yield data
+def reset_seeds():
+    # Set all seeds
+    SEED = 0
+    random.seed(SEED)
+    os.environ['PYTHONHASHSEED'] = str(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed(SEED)
+    torch.backends.cudnn.deterministic = True
 
 class EMA():
     '''
@@ -123,7 +133,9 @@ class Trainer(object):
     #-----------------------------------------------------------------------------#
 
     def train(self, n_train_steps):
-
+        # reset seeds here to make sure that DataLoading is reproducible
+        reset_seeds()
+        
         timer = Timer()
         for step in range(n_train_steps):
             for i in range(self.gradient_accumulate_every):
