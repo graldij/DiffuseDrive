@@ -105,6 +105,7 @@ def main():
     else:
         model_config = utils.Config(
             args.model,
+            image_backbone = args.image_backbone,
             savepath='model_config.pkl',
             horizon=args.horizon,
             transition_dim=observation_dim + action_dim,
@@ -116,7 +117,7 @@ def main():
             calc_energy=args.calc_energy,
             device=args.device,
             past_image_cond = args.past_image_cond,
-            resnet_freeze = args.resnet_freeze,
+            image_backbone_freeze = args.image_backbone_freeze,
             # attention??
         )
 
