@@ -21,6 +21,7 @@ base = {
     'diffusion': {
         ## model
         'model': 'models.TemporalUnetCarla',
+        'image_backbone': 'lraspp_mobilenet', # resnet18, lraspp_mobilenet
         'diffusion': 'models.GaussianInvDynDiffusionCarla',
         'horizon': 12,
         'n_diffusion_steps': 200,
