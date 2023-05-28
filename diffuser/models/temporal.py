@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torchvision.models import resnet50, resnet18
-from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_320_fpn
+from torchvision.models.segmentation import lraspp_mobilenet_v3_large
 import einops
 from einops.layers.torch import Rearrange
 from einops import rearrange
@@ -482,9 +482,9 @@ class TemporalUnetCarla(nn.Module):
             if self.image_backbone == 'resnet18':
                 self.image_encoder = FeatureExtractorResnet(freeze=image_backbone_freeze)
                 self.img_out_dim = 512
-            elif self.image_backbone == 'fasterrcnn':
-                self.image_encoder = FeatureExtractorFasterRCNN(freeze=image_backbone_freeze)
-                self.img_out_dim = 1024
+            elif self.image_backbone == 'lraspp_mobilenet':
+                self.image_encoder = FeatureExtractorMobileNetSSeg(freeze=image_backbone_freeze)
+                self.img_out_dim = 1280
 
             # TODO: here input output dim is hardcoded
             # [MOD] mlp to map the concatenated encoded images from past frames
@@ -561,7 +561,6 @@ class TemporalUnetCarla(nn.Module):
         '''
         if self.calc_energy:
             x_inp = x
-        # breakpoint()
         if self.past_image_cond:
             # images = images.type(torch.FloatTensor)
             past_time_step = cond.shape[1]
@@ -569,11 +568,15 @@ class TemporalUnetCarla(nn.Module):
             # TODO: add preprocessing?
             # TODO Jacopo: avoid hardcoded dimensions
             # [Mod] Process images from different timestep with the same resnet, and concatenate them
-            # breakpoint()
             for i in range(past_time_step):
                 current_image = images[:, i]
                 encoded_img = self.image_encoder(current_image)
-                stacked_encoded_img[:, i* self.img_out_dim : (i+1) * self.img_out_dim] = encoded_img.squeeze()
+                if self.image_backbone == 'resnet18':
+                    stacked_encoded_img[:, i* self.img_out_dim : (i+1) * self.img_out_dim] = encoded_img.squeeze()
+                elif self.image_backbone == 'lraspp_mobilenet':
+                    flattened_encoded_img = einops.rearrange(encoded_img, 'b c h w -> b (c h w)')
+                    stacked_encoded_img[:, i* self.img_out_dim : (i+1) * self.img_out_dim] = flattened_encoded_img.squeeze()
+            
             # [Mod] apply MLP to map the concatenated encoded images
             img_cond = self.stacked_img_mlp(stacked_encoded_img)
 
@@ -685,15 +688,19 @@ class FeatureExtractorResnet(nn.Module):
         x = self.backbone(x)
         return x
     
-class FeatureExtractorFasterRCNN(nn.Module):
+class FeatureExtractorMobileNetSSeg(nn.Module):
     def __init__(self, pretrained=True, freeze=True):
         super().__init__()
         if freeze:
-            self.backbone = fasterrcnn_mobilenet_v3_large_320_fpn(weights='DEFAULT', trainable_backbone_layers=0)
+            self.lraspp_mobilenet_v3_large = lraspp_mobilenet_v3_large(weights='LRASPP_MobileNet_V3_Large_Weights.DEFAULT')
+            self.backbone = self.lraspp_mobilenet_v3_large.backbone
+            for name, param in self.backbone.named_parameters():
+                param.requires_grad = False
+            self.conv_reduce = nn.Conv2d(40, 5, 1, padding='same')
         else:
-            self.backbone = fasterrcnn_mobilenet_v3_large_320_fpn(weights='DEFAULT', trainable_backbone_layers=3)
+            raise NotImplementedError
 
     def forward(self, x):
-        raise NotImplementedError
-        x = self.backbone(x)
+        seg = self.backbone(x) # out is a dict with keys: 'high', 'low'
+        x = self.conv_reduce(seg['low']) # seg['low'] is of shape (batch_size, 40, 16, 16). Reduce to batchx5x16x16
         return x

@@ -41,7 +41,7 @@ render_config = utils.Config(
 
 dataset = dataset_config()
 renderer = render_config()
-breakpoint()
+
 observation_dim = dataset.observation_dim # 17 for cheetah, 11 for hopper
 action_dim = dataset.action_dim # 6 for cheetah, 3 for hopper
 
