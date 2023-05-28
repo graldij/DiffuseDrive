@@ -19,6 +19,7 @@ class CarlaDatasetConfig(datasets.BuilderConfig):
             img_future_size = 6,
             high_level_cmd_size = 6, 
             horizon = 10,
+            is_valid = False,
             **kwargs
         ):
         """BuilderConfig for CarlaDataset.
@@ -41,6 +42,7 @@ class CarlaDatasetConfig(datasets.BuilderConfig):
         self.high_level_cmd_size = high_level_cmd_size
         self.name = name
         self.horizon = horizon
+        self.is_valid = is_valid
 
 
 class CarlaDataset(datasets.GeneratorBasedBuilder):
@@ -71,7 +73,8 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
             img_future_size = 0,
             waypoint_buffer_size = 3,
             waypoint_prediction_size = 8,
-            high_level_cmd_size = 1
+            high_level_cmd_size = 1, 
+            is_valid = False,
         ),
         CarlaDatasetConfig(
             name="waypoint_unconditioned",
@@ -80,7 +83,8 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
             horizon = 12,
             waypoint_buffer_size = 3,
             waypoint_prediction_size = 8,
-            high_level_cmd_size = 1
+            high_level_cmd_size = 1,
+            is_valid = False,
         )
     ]
 
@@ -241,9 +245,11 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                         continue
                 
                     # Loop through each file in the folder
-                    # MOD Minxuan: sequence reading in order
+                    # MOD Minxuan: sequence reading in order, is_valid parameter used here
                     measure_dir_list = os.listdir(folder_path_measurements)
-                    measure_dir_list.sort()
+                    is_valid = self.config.is_valid
+                    if is_valid:
+                        measure_dir_list.sort()
                     for file_name in measure_dir_list:
                         file_path_measurements = os.path.join(folder_path_measurements, file_name)
                         
@@ -281,9 +287,11 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                         continue
                 
                     # Loop through each file in the folder
-                    # MOD Minxuan: sequence reading in order
+                    # MOD Minxuan: sequence reading in order, is_valid parameter used
                     measure_dir_list = os.listdir(folder_path_rgb_front)
-                    measure_dir_list.sort()
+                    is_valid = self.config.is_valid
+                    if is_valid:
+                        measure_dir_list.sort()
                     for file_name in measure_dir_list:
                         file_path_rgb_front = os.path.join(folder_path_rgb_front, file_name)
                         

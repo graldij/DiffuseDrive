@@ -242,7 +242,7 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
 
     def __init__(self, env='carla-expert', horizon=64,
         normalizer='LimitsNormalizer', preprocess_fns=[], max_path_length=1000,
-        max_n_episodes=10000, termination_penalty=0, use_padding=True, discount=0.99, returns_scale=1000, include_returns=False, past_image_cond = True, waypoints_normalization = None):
+        max_n_episodes=10000, termination_penalty=0, use_padding=True, discount=0.99, returns_scale=1000, include_returns=False, past_image_cond = True, waypoints_normalization = None, is_valid = False):
         self.preprocess_fn = get_preprocess_fn(preprocess_fns, env)
         # self.env = env = load_environment(env)
         self.returns_scale = returns_scale
@@ -260,7 +260,12 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
             self.dataset = load_dataset("diffuser/datasets/carla_dataset", "decdiff", streaming=True, split="train")
         else:
             self.dataset = load_dataset("diffuser/datasets/carla_dataset", "waypoint_unconditioned", streaming=True, split="train")
-        self.dataset.shuffle(seed=42, buffer_size=50)
+        
+        ## MOD Minxuan, add is_valid
+        self.is_valid = is_valid
+        ## not shuffle for validation set, perhaps could be comment
+        if not self.is_valid:
+            self.dataset.shuffle(seed=42, buffer_size=50)
         self.img_size = 128
         self.preprocess = transforms.Compose([
             transforms.Resize((self.img_size,self.img_size)),
