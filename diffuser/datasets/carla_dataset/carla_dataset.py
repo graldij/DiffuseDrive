@@ -241,7 +241,10 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                         continue
                 
                     # Loop through each file in the folder
-                    for file_name in os.listdir(folder_path_measurements):
+                    # MOD Minxuan: sequence reading in order
+                    measure_dir_list = os.listdir(folder_path_measurements)
+                    measure_dir_list.sort()
+                    for file_name in measure_dir_list:
                         file_path_measurements = os.path.join(folder_path_measurements, file_name)
                         
                         file_name_no_suffix, _ = os.path.splitext(file_name)
@@ -278,7 +281,10 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                         continue
                 
                     # Loop through each file in the folder
-                    for file_name in os.listdir(folder_path_rgb_front):
+                    # MOD Minxuan: sequence reading in order
+                    measure_dir_list = os.listdir(folder_path_rgb_front)
+                    measure_dir_list.sort()
+                    for file_name in measure_dir_list:
                         file_path_rgb_front = os.path.join(folder_path_rgb_front, file_name)
                         
                         file_name_no_suffix, _ = os.path.splitext(file_name)
