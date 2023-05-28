@@ -242,7 +242,7 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
 
     def __init__(self, env='carla-expert', horizon=64,
         normalizer='LimitsNormalizer', preprocess_fns=[], max_path_length=1000,
-        max_n_episodes=10000, termination_penalty=0, use_padding=True, discount=0.99, returns_scale=1000, include_returns=False, past_image_cond = True):
+        max_n_episodes=10000, termination_penalty=0, use_padding=True, discount=0.99, returns_scale=1000, include_returns=False, past_image_cond = True, waypoints_normalization = None):
         self.preprocess_fn = get_preprocess_fn(preprocess_fns, env)
         # self.env = env = load_environment(env)
         self.returns_scale = returns_scale
@@ -254,6 +254,8 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
         self.include_returns = include_returns
         # itr = sequence_dataset(env, self.preprocess_fn)
         self.past_image_cond = past_image_cond
+        self.waypoints_normalization = waypoints_normalization
+        
         if past_image_cond:
             self.dataset = load_dataset("diffuser/datasets/carla_dataset", "decdiff", streaming=True, split="train")
         else:
@@ -320,6 +322,45 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
             condition on current observation for planning
         '''
         return {0: observations[0]}
+    
+    def get_mean_std_waypoints(self):
+        traj_mean, traj_std = 0.0, 1.0
+        if self.waypoints_normalization == "single_waypoints":
+            traj_mean = np.array([-1.4380759e-02, -4.2510300e+00, 1.1896066e-03])
+            traj_std = np.array([1.3787538, 7.970438, 0.19030738])
+        elif self.waypoints_normalization == "full_space":
+            traj_mean = np.array([  [-9.6931e-03,  4.8700e+00, -1.4568e-03],
+                                    [-4.6584e-03,  3.2597e+00, -9.3381e-04],
+                                    [-1.6569e-03,  1.6339e+00, -4.6059e-04],
+                                    [ 0.0000e+00,  0.0000e+00,  0.0000e+00],
+                                    [ 6.8762e-04, -1.6337e+00,  4.3586e-04],
+                                    [-5.8059e-05, -3.2622e+00,  8.5435e-04],
+                                    [-2.9566e-03, -4.8838e+00,  1.2646e-03],
+                                    [-8.2530e-03, -6.4950e+00,  1.6922e-03],
+                                    [-1.5935e-02, -8.0928e+00,  2.1226e-03],
+                                    [-2.5734e-02, -9.6753e+00,  2.5433e-03],
+                                    [-3.7314e-02, -1.1242e+01,  2.9973e-03],
+                                    [-5.0312e-02, -1.2791e+01,  3.4961e-03]])
+            traj_std = np.array([   [0.3209, 4.0127, 0.1432],
+                                    [0.1167, 2.7227, 0.0992],
+                                    [0.0225, 1.3844, 0.0514],
+                                    [0.0000, 0.0000, 0.0000],
+                                    [0.1156, 1.3830, 0.0515],
+                                    [0.3243, 2.7180, 0.0999],
+                                    [0.6107, 4.0036, 0.1449],
+                                    [0.9655, 5.2458, 0.1867],
+                                    [1.3822, 6.4494, 0.2254],
+                                    [1.8558, 7.6204, 0.2616],
+                                    [2.3817, 8.7654, 0.2957],
+                                    [2.9568, 9.8893, 0.3280]])
+        elif self.waypoints_normalization == None:
+            return traj_mean, traj_std
+        else:
+            raise NotImplementedError
+        
+        return traj_mean, traj_std
+        
+        
 
     def __len__(self):
         return len(self.indices)
@@ -335,13 +376,12 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
             actions = i["actions"]
             trajectories = np.array(actions).squeeze(0)
             # filter out the trajectories where the car is not moving, i.e. the maximum values in the horizon (future or past) are close to 0
-            if trajectories[:,:-1].max() <= 1e-6:
+            if np.absolute(trajectories[:,:-1]).max() <= 1e-6:
                 continue
             else:
                 # Normalize waypoints
-                traj_mean = np.array([-1.4380759e-02, -4.2510300e+00, 1.1896066e-03])
-                traj_std = np.array([1.3787538, 7.970438, 0.19030738])
-                trajectories = (trajectories - traj_mean)/traj_std
+                traj_mean, traj_std = self.get_mean_std_waypoints()
+                trajectories = (trajectories - traj_mean)/(traj_std + 1e-7)
                 
                 conditions = trajectories[:4, :].copy()
                 
