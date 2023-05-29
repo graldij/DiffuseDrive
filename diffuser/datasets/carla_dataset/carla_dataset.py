@@ -6,6 +6,7 @@ import numpy
 from datasets import load_dataset
 import torch
 from torchvision import transforms
+import time
 
 class CarlaDatasetConfig(datasets.BuilderConfig):
     def __init__(
@@ -145,7 +146,9 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
        
 
     def _generate_examples(self, base_dir):
-        if self.config.name == "unconditioned":
+        if self.config.name == "unconditioned": 
+            raise NotImplementedError
+        
             base_dir = self.config.base_dir
             for folder_name_weather in os.listdir(base_dir):
                 folder_path = os.path.join(base_dir, folder_name_weather)
@@ -194,9 +197,16 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                     
                     if not os.path.isdir(folder_path_rgb_front) or not os.path.isdir(folder_path_measurements):
                         continue
-                
+                        
+                        
+                    # MOD Minxuan: sequence reading in order, is_valid parameter used
+                    measure_dir_list = os.listdir(folder_path_rgb_front)
+                    is_valid = self.config.is_valid
+                    if is_valid:
+                        measure_dir_list.sort()
+                        
                     # Loop through each file in the folder
-                    for file_name in os.listdir(folder_path_rgb_front):
+                    for file_name in measure_dir_list:
                         file_path_rgb_front = os.path.join(folder_path_rgb_front, file_name)
                         
                         file_name_no_suffix, _ = os.path.splitext(file_name)
@@ -271,6 +281,8 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                         new_name = f"{folder_name_weather}_{folder_name_route}_{file_name_no_suffix}"
                         yield new_name, output
         else:
+            raise NotImplementedError
+    
             for folder_name_weather in os.listdir(base_dir):
                 folder_path = os.path.join(base_dir, folder_name_weather)
                 folder_path = os.path.join(folder_path, "data")

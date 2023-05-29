@@ -52,7 +52,7 @@ def main():
     ## TODO from Minxuan: need check from Jacopo if it works
     valid_dataset_config = utils.Config(
         args.loader,
-        savepath='dataset_config.pkl',
+        savepath='dataset_valid_config.pkl',
         env=args.dataset,
         horizon=args.horizon,
         normalizer=args.normalizer,
@@ -190,7 +190,7 @@ def main():
 
     diffusion = diffusion_config(model)
 
-    trainer = trainer_config(diffusion, dataset, renderer, wandb_run)
+    trainer = trainer_config(diffusion, dataset, valid_dataset, renderer, wandb_run)
 
     # -----------------------------------------------------------------------------#
     # ------------------------ test forward & backward pass -----------------------#

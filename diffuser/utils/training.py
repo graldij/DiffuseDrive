@@ -53,6 +53,7 @@ class Trainer(object):
         self,
         diffusion_model,
         dataset,
+        valid_dataset,
         renderer,
         wandb_run=None,
         ema_decay=0.995,
@@ -91,13 +92,14 @@ class Trainer(object):
         self.gradient_accumulate_every = gradient_accumulate_every
 
         self.dataset = dataset
+        self.valid_dataset = valid_dataset
 
-        # [MOD] shuffle is removed since dataset is iterable, shuffle is set in the sequence.py
+        # Shuffling is handled by sequence.py with the flag "is_valid". Here everythin should be set to shuffle = False
         self.dataloader = cycle(torch.utils.data.DataLoader(
-            self.dataset, batch_size=train_batch_size, num_workers=0, pin_memory=True
+            self.dataset, batch_size=train_batch_size, num_workers=0, pin_memory=True, shuffle=False
         ))
         self.dataloader_vis = cycle(torch.utils.data.DataLoader(
-            self.dataset, batch_size=1, num_workers=0, pin_memory=True
+            self.valid_dataset, batch_size=1, num_workers=0, pin_memory=True
         ))
         self.renderer = renderer
         

@@ -257,9 +257,9 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
         self.waypoints_normalization = waypoints_normalization
         
         if past_image_cond:
-            self.dataset = load_dataset("diffuser/datasets/carla_dataset", "decdiff", streaming=True, split="train")
+            self.dataset = load_dataset("diffuser/datasets/carla_dataset", "decdiff", is_valid = is_valid, streaming=True, split="train")
         else:
-            self.dataset = load_dataset("diffuser/datasets/carla_dataset", "waypoint_unconditioned", streaming=True, split="train")
+            self.dataset = load_dataset("diffuser/datasets/carla_dataset", "waypoint_unconditioned", is_valid = is_valid, streaming=True, split="train")
         
         ## MOD Minxuan, add is_valid
         self.is_valid = is_valid
