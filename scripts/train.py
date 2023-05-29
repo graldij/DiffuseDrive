@@ -49,6 +49,25 @@ def main():
         waypoints_normalization = args.waypoints_normalization,
     )
 
+    ## TODO from Minxuan: need check from Jacopo if it works
+    valid_dataset_config = utils.Config(
+        args.loader,
+        savepath='dataset_valid_config.pkl',
+        env=args.dataset,
+        horizon=args.horizon,
+        normalizer=args.normalizer,
+        preprocess_fns=args.preprocess_fns,
+        use_padding=args.use_padding,
+        max_path_length=args.max_path_length,
+        include_returns=args.include_returns,
+        returns_scale=args.returns_scale,
+        discount=args.discount,
+        termination_penalty=args.termination_penalty,
+        past_image_cond = args.past_image_cond,
+        waypoints_normalization = args.waypoints_normalization,
+        is_valid = True,
+    )
+
     render_config = utils.Config(
         args.renderer,
         savepath='render_config.pkl',
@@ -56,6 +75,7 @@ def main():
     )
 
     dataset = dataset_config()
+    valid_dataset = valid_dataset_config()
     # renderer = render_config()
     renderer = None
     observation_dim = dataset.observation_dim
@@ -170,7 +190,7 @@ def main():
 
     diffusion = diffusion_config(model)
 
-    trainer = trainer_config(diffusion, dataset, renderer, wandb_run)
+    trainer = trainer_config(diffusion, dataset, valid_dataset, renderer, wandb_run)
 
     # -----------------------------------------------------------------------------#
     # ------------------------ test forward & backward pass -----------------------#
