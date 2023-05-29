@@ -19,7 +19,7 @@ from leaderboard.autoagents import autonomous_agent
 from timm.models import create_model
 from team_code.utils import lidar_to_histogram_features, transform_2d_points
 from team_code.planner import RoutePlanner
-from team_code.interfuser_controller import InterfuserController
+from leaderboard.team_code.DiffuseDrive_controller import DiffuseDriveController
 from team_code.render import render, render_self_car, render_waypoints
 from team_code.tracker import Tracker
 
@@ -111,7 +111,7 @@ class DisplayInterface(object):
 
 
 def get_entry_point():
-    return "InterfuserAgent"
+    return "DiffuseDriveAgent"
 
 
 class Resize2FixedSize:
@@ -156,7 +156,7 @@ def create_carla_rgb_transform(
     return transforms.Compose(tfl)
 
 
-class InterfuserAgent(autonomous_agent.AutonomousAgent):
+class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
     def setup(self, path_to_conf_file):
 
         self._hic = DisplayInterface()
@@ -184,7 +184,7 @@ class InterfuserAgent(autonomous_agent.AutonomousAgent):
 
         self.config = imp.load_source("MainModel", path_to_conf_file).GlobalConfig()
         self.skip_frames = self.config.skip_frames
-        self.controller = InterfuserController(self.config)
+        self.controller = DiffuseDriveController(self.config)
         if isinstance(self.config.model, list):
             self.ensemble = True
         else:

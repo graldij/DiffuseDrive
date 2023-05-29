@@ -78,7 +78,7 @@ def get_max_safe_distance(meta_data, downsampled_waypoints, t, collision_buffer,
         safe_distance = max(safe_distance, np.linalg.norm(loc))
     return safe_distance
 
-class InterfuserController(object):
+class DiffuseDriveController(object):
     def __init__(self, config):
         self.turn_controller = PIDController(
             K_P=config.turn_KP, K_I=config.turn_KI, K_D=config.turn_KD, n=config.turn_n

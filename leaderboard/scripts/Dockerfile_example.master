@@ -79,8 +79,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends libgtk2.0-dev
 
 RUN pip install  -i https://pypi.tuna.tsinghua.edu.cn/simple -r /workspace/team_code/requirements.txt
 
-ENV TEAM_AGENT ${TEAM_CODE_ROOT}/interfuser_agent_video.py
-ENV TEAM_CONFIG ${TEAM_CODE_ROOT}/interfuser_config.py
+ENV TEAM_AGENT ${TEAM_CODE_ROOT}/DiffuseDrive_agent_video.py
+ENV TEAM_CONFIG ${TEAM_CODE_ROOT}/DiffuseDrive_config.py
 ENV CHALLENGE_TRACK_CODENAME SENSORS
 
 ########################################################################################################################
