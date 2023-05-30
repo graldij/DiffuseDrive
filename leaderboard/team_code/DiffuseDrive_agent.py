@@ -1,8 +1,10 @@
 import os
 import json
+import einops
 import datetime
 import pathlib
 import time
+# TODO Jacopo: imp is deprecated, substitute with importlib
 import imp
 import cv2
 import carla
@@ -12,14 +14,14 @@ import torch
 import carla
 import numpy as np
 from PIL import Image
-from easydict import EasyDict
 
 from torchvision import transforms
 from leaderboard.autoagents import autonomous_agent
-from timm.models import create_model
 from team_code.utils import lidar_to_histogram_features, transform_2d_points
 from team_code.planner import RoutePlanner
 from leaderboard.team_code.DiffuseDrive_controller import DiffuseDriveController
+
+import diffuser.utils as utils
 
 import math
 import yaml
@@ -112,6 +114,87 @@ class DisplayInterface(object):
 def get_entry_point():
     return "DiffuseDriveAgent"
 
+def get_config():
+    
+    # TODO Marcus: this probably won't work as the path is not correct. But cannot run it.
+    class Parser(utils.Parser):
+        dataset: str = 'carla-expert'
+        config: str = 'config.carla'
+
+    args = Parser().parse_args('diffusion')
+    
+    return args
+
+def get_model(config, dataset):
+    
+    model_config = utils.Config(
+        config.model,
+        image_backbone = config.image_backbone,
+        # savepath='model_config.pkl', # might be needed
+        horizon=config.horizon,
+        transition_dim=dataset.observation_dim + dataset.action_dim,
+        cond_dim=dataset.observation_dim,
+        dim_mults=config.dim_mults,
+        returns_condition=config.returns_condition,
+        dim=config.dim,
+        condition_dropout=config.condition_dropout,
+        calc_energy=config.calc_energy,
+        device=config.device,
+        past_image_cond = config.past_image_cond,
+        image_backbone_freeze = config.image_backbone_freeze,
+        # attention??
+    )
+    
+    diffusion_config = utils.Config(
+        config.diffusion,
+        savepath='diffusion_config.pkl',
+        horizon=config.horizon,
+        observation_dim=dataset.observation_dim,
+        action_dim=dataset.action_dim,
+        n_timesteps=config.n_diffusion_steps,
+        loss_type=config.loss_type,
+        clip_denoised=config.clip_denoised,
+        predict_epsilon=config.predict_epsilon,
+        hidden_dim=config.hidden_dim,
+        ar_inv=config.ar_inv,
+        train_only_inv=config.train_only_inv,
+        ## loss weighting
+        action_weight=config.action_weight,
+        loss_weights=config.loss_weights,
+        loss_discount=config.loss_discount,
+        returns_condition=config.returns_condition,
+        condition_guidance_w=config.condition_guidance_w,
+        device=config.device,
+    )
+    
+    model = model_config()
+
+    diffusion = diffusion_config(model)
+    
+    return diffusion
+    
+def get_train_dataset(config):
+    
+    dataset_config = utils.Config(
+        config.loader,
+        savepath='dataset_config.pkl',
+        env=config.dataset,
+        horizon=config.horizon,
+        normalizer=config.normalizer,
+        preprocess_fns=config.preprocess_fns,
+        use_padding=config.use_padding,
+        max_path_length=config.max_path_length,
+        include_returns=config.include_returns,
+        returns_scale=config.returns_scale,
+        discount=config.discount,
+        termination_penalty=config.termination_penalty,
+        past_image_cond = config.past_image_cond,
+        waypoints_normalization = config.waypoints_normalization,
+    )
+    
+    dataset = dataset_config()
+    
+    return dataset
 
 class Resize2FixedSize:
     def __init__(self, size):
@@ -156,6 +239,7 @@ def create_carla_rgb_transform(
 
 
 class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
+    # TODO Jacopo: the path is probably still needed for compatibility with leaderboard_evaluator.py, but actually not used
     def setup(self, path_to_conf_file):
 
         self._hic = DisplayInterface()
@@ -164,8 +248,9 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         self.step = -1
         self.wall_start = time.time()
         self.initialized = False
+
         
-        # TODO Marcus in theory it should not matter much what size we input into the evaluation network as it is resized anyway
+        # TODO Marcus in theory it should not matter much what size we input into the evaluation network as it is resized anyway. Also: the semantic segm. backbone we are using resizes the input anyway to a larger size.
         self.rgb_front_transform = create_carla_rgb_transform(224)
         
         self.rgb_left_transform = create_carla_rgb_transform(128)
@@ -184,26 +269,34 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
             "thetas": deque(),
         }
 
-        self.config = imp.load_source("MainModel", path_to_conf_file).GlobalConfig()
+        # load the config file
+        self.config = get_config()
         self.skip_frames = self.config.skip_frames
         self.controller = DiffuseDriveController(self.config)
 
-        # TODO Jacopo: load the model
-        self.net = create_model(self.config.model)
-        path_to_model_file = self.config.model_path
+        # load the model
+        self.net = get_model(self.config)
+        # load train_dataset to get useful attributes and methods (e.g. normalization)
+        self.train_dataset = get_train_dataset(self.config)
+        
+        # normalization mean and std used for training
+        self.waypoints_mean, self.waypoints_std = self.train_dataset.get_mean_std_waypoints()
+                
+        path_to_model_file = self.config.checkpoint_path
         print('load model: %s' % path_to_model_file)
         self.net.load_state_dict(torch.load(path_to_model_file)["state_dict"])
         self.net.cuda()
         self.net.eval()
         
         self.softmax = torch.nn.Softmax(dim=1)
-        self.momentum = self.config.momentum
+        
         self.prev_lidar = None
         self.prev_control = None
         self.prev_surround_map = None
 
         self.save_path = None
         
+        self.past_image_cond = self.config.past_image_cond
         
         if SAVE_PATH is not None:
             now = datetime.datetime.now()
@@ -231,6 +324,81 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         gps = tick_data["gps"]
         gps = (gps - self._route_planner.mean) * self._route_planner.scale
         return gps
+    
+    def get_past_waypoints(self):
+        # TODO Marcus: get the 4 past waypoints used as condition for our model.
+        # Not sure if this is needed or carla is able to give as data the past waypoints, so no need to store them in a buffer and retrieve them here.
+        # There is already an input buffer, take a look at that.
+        raise NotImplementedError
+    
+    def get_past_images(self):
+        # TODO Marcus: get the past images used as condition for our model.
+        # Same as for waypoints, not sure if this is needed or carla is able to give as data the past images, so no need to store them in a buffer and retrieve them here. 
+        # There is already an input buffer, take a look at that, maybe that is what we need.
+        raise NotImplementedError
+    
+    
+    def waypoints_normalizer(self, waypoints):   
+        normalized_waypoints = (waypoints - self.waypoints_mean) / (self.waypoints_std + 1e-7)
+        
+        return normalized_waypoints
+    
+    
+    def waypoints_denormalizer(self, normalized_waypoints):
+        waypoints = normalized_waypoints * (self.waypoints_std + 1e-7) + self.waypoints_mean
+        
+        return waypoints
+    
+    def diffusedrive_image_processing(self, images):
+        # TODO Marcus: normalize images. Same as done by the images_batch_norm function in training.py. Ideally we should try to avoid double code, i.e. refer to that function here.
+        raise NotImplementedError
+    
+    def carla2diffusedrive_data(self, input_data, past_image_cond, n_diff_trajectories = 1):
+        # TODO Marcus: build the Batch object used for training
+        # * normalize images
+        # * normalized past waypoints
+        # * need to check what format is coming from carla (I assume PIL)
+        # * not sure how the "past waypoints" are handled by carla, e.g. if carla stores the past waypoints as input data and can then be used as input for our model, or if we need to have a buffer to store and retrieve them 
+        
+           
+       
+        condition = self.get_past_waypoints()
+        
+        # Normalize waypoints here
+        norm_condition = self.waypoints_normalizer(condition)
+        
+        norm_condition = einops.repeat(norm_condition, 'b t d -> (repeat b) t d', repeat = n_diff_trajectories)
+        
+        past_images = None
+        
+        if past_image_cond:
+            past_images = self.get_past_images()
+            # NORMALIZE IMAGES
+            norm_images = self.diffusedrive_image_processing(past_images) 
+            
+            norm_images = einops.repeat(norm_images, 'b t h w d -> (repeat b) t h w d', repeat = n_diff_trajectories)           
+        
+        sample = (norm_condition, norm_images)
+        
+        
+        raise NotImplementedError
+    
+        return sample
+    
+    
+    def diffusedrive2carla_data(self, diffusedrive_data):
+        # TODO Marcus
+        # See render_samples function in training.py.
+        # * discard past waypoints
+        # * de-normalize waypoints
+        
+        # future waypoints
+        norm_pred_waypoints = diffusedrive_data[:,:,4:]
+        
+        pred_waypoints = self.waypoints_denormalizer(norm_pred_waypoints)
+        raise NotImplementedError
+
+        return pred_waypoints
 
     def sensors(self):
         return [
@@ -355,7 +523,7 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
 
         result["gps"] = pos
         
-        # TODO Marcus: here we plan the route and take next waypoint and action 
+        # TODO Marcus: here we plan the route and take next waypoint and action, I guess 
         next_wp, next_cmd = self._route_planner.run_step(pos)
         result["next_command"] = next_cmd.value
         result['measurements'] = [pos[0], pos[1], compass, speed]
@@ -432,21 +600,35 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         )
         
         
-        
-        # TODO Jacopo: adapt to our model
+        ################################## PREDICT FUTURE WAYPOINTS ##################################
         with torch.no_grad():
-            pred_waypoints = self.net(input_data)
+            
+            # TODO Jacopo: how many trajectories should we sample? And how to handle them if more than one?
+            
+            # TODO Marcus: implement carla-data to our expected input. diffusedrive_input should be a tuple of (conditions, images). See trainin.py at fuction render_samples.
+            diffusedrive_input = self.carla2diffusedrive_data(input_data, self.past_image_cond)
+            
+            # forward pass samples trajectories (calling conditional_sample function)
+            diffused_waypoints = self.net(condition = diffusedrive_input[0], images = diffusedrive_input[1])
+            
+            diffused_waypoints = diffused_waypoints.detach().cpu().numpy()
+            
+            # TODO Marcus: pred_waypoints should be non-normalized, with [0] being the current position (I think)
+            pred_waypoints = self.diffusedrive2carla_data(diffused_waypoints) 
+            
+            # TODO Marcus: not sure if this is needed
+            pred_waypoints = pred_waypoints.detach().cpu().numpy()[0]
 
-        pred_waypoints = pred_waypoints.detach().cpu().numpy()[0]
+        ##############################################################################################
 
 
-        # call the controller to compute the control out of the generated
-        # TODO Jacopo: adapt to our outputs
+        # call the controller to compute the control out of the predicted waypoints
         steer, throttle, brake, meta_infos = self.controller.run_step(
             velocity,
             pred_waypoints,
         )
 
+        # TODO Jacopo: to check if this is needed.
         if brake < 0.05:
             brake = 0.0
         if brake > 0.1:
@@ -470,11 +652,13 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         tick_data["rgb_left_raw"] = tick_data["rgb_left"]
         tick_data["rgb_right_raw"] = tick_data["rgb_right"]
 
-
+        # we probably do not need these resizings
         tick_data["rgb"] = cv2.resize(tick_data["rgb"], (800, 600))
         tick_data["rgb_left"] = cv2.resize(tick_data["rgb_left"], (200, 150))
         tick_data["rgb_right"] = cv2.resize(tick_data["rgb_right"], (200, 150))
         tick_data["rgb_focus"] = cv2.resize(tick_data["rgb_raw"][244:356, 344:456], (150, 150))
+        
+        
         tick_data["control"] = "throttle: %.2f, steer: %.2f, brake: %.2f" % (
             control.throttle,
             control.steer,
