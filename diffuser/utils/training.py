@@ -73,6 +73,8 @@ class Trainer(object):
         bucket=None,
         train_device='cuda',
         save_checkpoints=False,
+        save_final=True,
+        final_model_path = None,
     ):
         super().__init__()
         self.model = diffusion_model
@@ -80,6 +82,9 @@ class Trainer(object):
         self.ema_model = copy.deepcopy(self.model)
         self.update_ema_every = update_ema_every
         self.save_checkpoints = save_checkpoints
+        
+        self.save_final = save_final
+        self.savepath = final_model_path
 
         self.step_start_ema = step_start_ema
         self.log_freq = log_freq
@@ -169,8 +174,8 @@ class Trainer(object):
             if self.step % self.update_ema_every == 0:
                 self.step_ema()
                 
-            if self.step % self.save_freq == 0:
-                self.save()
+            if self.step % self.save_freq == 0 and self.save_checkpoints:
+                self.save(savepath=self.savepath)
 
             if self.step % self.log_freq == 0:
                 infos_str = ' | '.join([f'{key}: {val:8.4f}' for key, val in infos.items()])
@@ -202,8 +207,11 @@ class Trainer(object):
             self.scheduler.step()
             
             self.step += 1
+            
+        if self.save_final:
+            self.save(savepath=self.savepath)
 
-    def save(self):
+    def save(self, savepath=None):
         '''
             saves model and ema to disk;
             syncs to storage bucket if a bucket is specified
@@ -214,13 +222,14 @@ class Trainer(object):
             'ema': self.ema_model.state_dict()
         }
         # savepath = os.path.join(self.bucket, 'checkpoint')
-        savepath = 'checkpoint'
+        savepath = savepath +'/'+ self.wandb_run.id
+        
         os.makedirs(savepath, exist_ok=True)
         # logger.save_torch(data, savepath)
         if self.save_checkpoints:
             savepath = os.path.join(savepath, f'state_{self.step}.pt')
         else:
-            savepath = os.path.join(savepath, 'state.pt')
+            savepath = os.path.join(savepath, 'step_model_ema.pt')
         torch.save(data, savepath)
         logger.info(f'[ utils/training ] Saved model to {savepath}')
 
