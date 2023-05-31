@@ -52,7 +52,7 @@ def main():
     ## TODO from Minxuan: need check from Jacopo if it works
     valid_dataset_config = utils.Config(
         args.loader,
-        savepath='dataset_valid_config.pkl',
+        savepath='tmp',
         env=args.dataset,
         horizon=args.horizon,
         normalizer=args.normalizer,
@@ -181,6 +181,8 @@ def main():
         n_reference=args.n_reference,
         train_device=args.device,
         save_checkpoints=args.save_checkpoints,
+        save_final=args.save_final,
+        final_model_path = args.final_model_path,
     )
     # -----------------------------------------------------------------------------#
     # -------------------------------- instantiate --------------------------------#

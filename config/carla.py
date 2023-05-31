@@ -81,6 +81,8 @@ base = {
         'save_parallel': False,
         'n_reference': 8,
         'save_checkpoints': False,
+        'save_final': True,
+        "final_model_path": 'trained_models/',
         'bucket': None,
         'device': 'cuda',
         'seed': 100,
