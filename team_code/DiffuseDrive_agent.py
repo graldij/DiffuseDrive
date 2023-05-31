@@ -19,12 +19,14 @@ from torchvision import transforms
 from leaderboard.autoagents import autonomous_agent
 from team_code.utils import lidar_to_histogram_features, transform_2d_points
 from team_code.planner import RoutePlanner
-from leaderboard.team_code.DiffuseDrive_controller import DiffuseDriveController
+from team_code.DiffuseDrive_controller import DiffuseDriveController
 
 import diffuser.utils as utils
+from diffuser.datasets.carla_dataset.carla_dataset import convert_gps_to_ego
 
 import math
 import yaml
+import pdb
 
 try:
     import pygame
@@ -220,18 +222,19 @@ def create_carla_rgb_transform(
     else:
         input_size_num = input_size
 
-    if need_scale:
-        if input_size_num == 112:
-            tfl.append(Resize2FixedSize((170, 128)))
-        elif input_size_num == 128:
-            tfl.append(Resize2FixedSize((195, 146)))
-        elif input_size_num == 224:
-            tfl.append(Resize2FixedSize((341, 256)))
-        elif input_size_num == 256:
-            tfl.append(Resize2FixedSize((288, 288)))
-        else:
-            raise ValueError("Can't find proper crop size")
-    tfl.append(transforms.CenterCrop(img_size))
+    # if need_scale:
+    #     if input_size_num == 112:
+    #         tfl.append(Resize2FixedSize((170, 128)))
+    #     elif input_size_num == 128:
+    #         tfl.append(Resize2FixedSize((195, 146)))
+    #     elif input_size_num == 224:
+    #         tfl.append(Resize2FixedSize((341, 256)))
+    #     elif input_size_num == 256:
+    #         tfl.append(Resize2FixedSize((288, 288)))
+    #     else:
+    #         raise ValueError("Can't find proper crop size")
+    # tfl.append(transforms.CenterCrop(img_size))
+    tfl.append(Resize2FixedSize((128,128)))
     tfl.append(transforms.ToTensor())
     tfl.append(transforms.Normalize(mean=torch.tensor(mean), std=torch.tensor(std)))
 
@@ -241,14 +244,15 @@ def create_carla_rgb_transform(
 class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
     # TODO Jacopo: the path is probably still needed for compatibility with leaderboard_evaluator.py, but actually not used
     def setup(self, path_to_conf_file):
-
+        # breakpoint()
         self._hic = DisplayInterface()
         self.lidar_processed = list()
         self.track = autonomous_agent.Track.SENSORS
         self.step = -1
         self.wall_start = time.time()
         self.initialized = False
-
+        self.skip_prediction_frame = 10
+        self.past_pred_waypoints = None
         
         # TODO Marcus in theory it should not matter much what size we input into the evaluation network as it is resized anyway. Also: the semantic segm. backbone we are using resizes the input anyway to a larger size.
         self.rgb_front_transform = create_carla_rgb_transform(224)
@@ -259,13 +263,14 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
 
         # self.tracker = Tracker()
 
+        self.past_timesteps = 3
         self.input_buffer = {
-            "rgb": deque(),
+            "rgb": deque([None] * self.past_timesteps),
             "rgb_left": deque(),
             "rgb_right": deque(),
             "rgb_rear": deque(),
             "lidar": deque(),
-            "gps": deque(),
+            "gps": deque([None] * self.past_timesteps),
             "thetas": deque(),
         }
 
@@ -275,18 +280,21 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         self.controller = DiffuseDriveController(self.config)
 
         # load the model
-        self.net = get_model(self.config)
         # load train_dataset to get useful attributes and methods (e.g. normalization)
         self.train_dataset = get_train_dataset(self.config)
+        self.net = get_model(self.config, self.train_dataset)
         
         # normalization mean and std used for training
         self.waypoints_mean, self.waypoints_std = self.train_dataset.get_mean_std_waypoints()
                 
-        path_to_model_file = self.config.checkpoint_path
+        path_to_model_file = "/home/marcus/Documents/Semester2/RobotLearning/DiffuseDrive/train_models/step_model_ema.pt"
         print('load model: %s' % path_to_model_file)
-        self.net.load_state_dict(torch.load(path_to_model_file)["state_dict"])
-        self.net.cuda()
+        # self.net.load_state_dict(torch.load(path_to_model_file)["state_dict"])
+        data = torch.load(path_to_model_file)
+        self.net.load_state_dict(data['ema'])
+        # self.net.cuda()
         self.net.eval()
+        self.net.to("cpu")
         
         self.softmax = torch.nn.Softmax(dim=1)
         
@@ -329,60 +337,77 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         # TODO Marcus: get the 4 past waypoints used as condition for our model.
         # Not sure if this is needed or carla is able to give as data the past waypoints, so no need to store them in a buffer and retrieve them here.
         # There is already an input buffer, take a look at that.
-        raise NotImplementedError
+        # raise NotImplementedError
+        return self.input_buffer['gps']
     
     def get_past_images(self):
         # TODO Marcus: get the past images used as condition for our model.
         # Same as for waypoints, not sure if this is needed or carla is able to give as data the past images, so no need to store them in a buffer and retrieve them here. 
         # There is already an input buffer, take a look at that, maybe that is what we need.
-        raise NotImplementedError
+        return self.input_buffer['rgb']
     
     
     def waypoints_normalizer(self, waypoints):   
-        normalized_waypoints = (waypoints - self.waypoints_mean) / (self.waypoints_std + 1e-7)
+        normalized_waypoints = (waypoints - self.waypoints_mean[:4]) / (self.waypoints_std[:4] + 1e-7)
         
         return normalized_waypoints
     
     
     def waypoints_denormalizer(self, normalized_waypoints):
-        waypoints = normalized_waypoints * (self.waypoints_std + 1e-7) + self.waypoints_mean
+        waypoints = normalized_waypoints * (self.waypoints_std[4:] + 1e-7) + self.waypoints_mean[4:]
         
         return waypoints
     
     def diffusedrive_image_processing(self, images):
         # TODO Marcus: normalize images. Same as done by the images_batch_norm function in training.py. Ideally we should try to avoid double code, i.e. refer to that function here.
-        raise NotImplementedError
+        # raise NotImplementedError
+        return images
     
     def carla2diffusedrive_data(self, input_data, past_image_cond, n_diff_trajectories = 1):
         # TODO Marcus: build the Batch object used for training
         # * normalize images
         # * normalized past waypoints
         # * need to check what format is coming from carla (I assume PIL)
-        # * not sure how the "past waypoints" are handled by carla, e.g. if carla stores the past waypoints as input data and can then be used as input for our model, or if we need to have a buffer to store and retrieve them 
+        # * not sure how the "past waypoints" are handled by carla, e.g. if carla stores the past waypoints as input data and can then be used as input for our model, or if we need to have a buffer to store and retrieve them   
+        # breakpoint()
+        past_waypoints = self.get_past_waypoints()
         
-           
-       
-        condition = self.get_past_waypoints()
-        
+        current_waypoint = np.array([input_data['gps'][0], input_data['gps'][1], input_data['compass']])
+        condition = np.zeros((self.past_timesteps+1, 3))
+        for t, past_waypoint in enumerate(past_waypoints):
+            if past_waypoint is None:
+                past_waypoint = current_waypoint.copy()
+            past_waypoint_ego = convert_gps_to_ego([past_waypoint], current_waypoint)
+            condition[t] = past_waypoint_ego[0]
+        condition[-1] = np.zeros((1,3))
+
         # Normalize waypoints here
         norm_condition = self.waypoints_normalizer(condition)
+        norm_condition = norm_condition[np.newaxis, :, : ]
         
         norm_condition = einops.repeat(norm_condition, 'b t d -> (repeat b) t d', repeat = n_diff_trajectories)
         
+        norm_condition = torch.from_numpy(norm_condition)
         past_images = None
         
         if past_image_cond:
+            current_image = input_data['rgb']
             past_images = self.get_past_images()
-            # NORMALIZE IMAGES
-            norm_images = self.diffusedrive_image_processing(past_images) 
+
+            norm_images = torch.zeros((1, self.past_timesteps+1, 3, 128, 128))
+            for t, past_image in enumerate(past_images):
+                if past_image is None:
+                    past_image = current_image.clone()
+                norm_images[:,t] = past_image
+            norm_images[:,-1] = current_image
+
+            # Image are already normalized 
+            # norm_images = self.diffusedrive_image_processing(past_images) 
             
             norm_images = einops.repeat(norm_images, 'b t h w d -> (repeat b) t h w d', repeat = n_diff_trajectories)           
         
         sample = (norm_condition, norm_images)
-        
-        
-        raise NotImplementedError
-    
+        # breakpoint()
         return sample
     
     
@@ -393,10 +418,10 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         # * de-normalize waypoints
         
         # future waypoints
-        norm_pred_waypoints = diffusedrive_data[:,:,4:]
+        norm_pred_waypoints = diffusedrive_data[:,4:,:]
         
         pred_waypoints = self.waypoints_denormalizer(norm_pred_waypoints)
-        raise NotImplementedError
+        # raise NotImplementedError
 
         return pred_waypoints
 
@@ -500,6 +525,7 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
             "compass": compass,
         }
 
+        # breakpoint()
         pos = self._get_position(result)
 
         lidar_data = input_data['lidar'][1]
@@ -555,25 +581,21 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         rgb = (
             self.rgb_front_transform(Image.fromarray(tick_data["rgb"]))
             .unsqueeze(0)
-            .cuda()
             .float()
         )
         rgb_left = (
             self.rgb_left_transform(Image.fromarray(tick_data["rgb_left"]))
             .unsqueeze(0)
-            .cuda()
             .float()
         )
         rgb_right = (
             self.rgb_right_transform(Image.fromarray(tick_data["rgb_right"]))
             .unsqueeze(0)
-            .cuda()
             .float()
         )
         rgb_center = (
             self.rgb_center_transform(Image.fromarray(tick_data["rgb"]))
             .unsqueeze(0)
-            .cuda()
             .float()
         )
 
@@ -598,35 +620,36 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         input_data["lidar"] = (
             torch.from_numpy(tick_data["lidar"]).float().cuda().unsqueeze(0)
         )
-        
-        
+        input_data['gps'] = tick_data['gps']
+        input_data['compass'] = tick_data['compass']
+
         ################################## PREDICT FUTURE WAYPOINTS ##################################
         with torch.no_grad():
             
             # TODO Jacopo: how many trajectories should we sample? And how to handle them if more than one?
-            
+            # breakpoint()
             # TODO Marcus: implement carla-data to our expected input. diffusedrive_input should be a tuple of (conditions, images). See trainin.py at fuction render_samples.
             diffusedrive_input = self.carla2diffusedrive_data(input_data, self.past_image_cond)
             
             # forward pass samples trajectories (calling conditional_sample function)
-            diffused_waypoints = self.net(condition = diffusedrive_input[0], images = diffusedrive_input[1])
+            if self.past_pred_waypoints is None or self.step % self.skip_prediction_frame == 0:
+                diffused_waypoints = self.net(cond = diffusedrive_input[0], images = diffusedrive_input[1])
+                diffused_waypoints = diffused_waypoints.detach().cpu().numpy()
+                # TODO Marcus: pred_waypoints should be non-normalized, with [0] being the current position (I think)
+                pred_waypoints = self.diffusedrive2carla_data(diffused_waypoints)
+                # TODO Marcus: not sure if this is needed
+                pred_waypoints = pred_waypoints[0]
+            else:
+                pred_waypoints = self.past_pred_waypoints
             
-            diffused_waypoints = diffused_waypoints.detach().cpu().numpy()
-            
-            # TODO Marcus: pred_waypoints should be non-normalized, with [0] being the current position (I think)
-            pred_waypoints = self.diffusedrive2carla_data(diffused_waypoints) 
-            
-            # TODO Marcus: not sure if this is needed
-            pred_waypoints = pred_waypoints.detach().cpu().numpy()[0]
-
+            self.past_pred_waypoints = pred_waypoints
+            # pred_waypoints = np.array([[-5.0, -10.0]] * 10)
+            # pred_waypoints[0] = np.zeros((1,2))
         ##############################################################################################
 
 
         # call the controller to compute the control out of the predicted waypoints
-        steer, throttle, brake, meta_infos = self.controller.run_step(
-            velocity,
-            pred_waypoints,
-        )
+        steer, throttle, brake, meta_infos = self.controller.run_step(velocity, pred_waypoints)
 
         # TODO Jacopo: to check if this is needed.
         if brake < 0.05:
@@ -647,6 +670,12 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
             control = self.prev_control
         else:
             self.prev_control = control
+
+        self.input_buffer['gps'].append(np.array([tick_data['gps'][0], tick_data['gps'][1], tick_data['compass']]))
+        self.input_buffer['gps'].popleft()
+
+        self.input_buffer['rgb'].append(input_data['rgb'])
+        self.input_buffer['rgb'].popleft()
 
         tick_data["rgb_raw"] = tick_data["rgb"]
         tick_data["rgb_left_raw"] = tick_data["rgb_left"]
@@ -669,23 +698,21 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         
         tick_data["mes"] = "speed: %.2f" % velocity
         tick_data["time"] = "time: %.3f" % timestamp
-        surface = self._hic.run_interface(tick_data)
-        tick_data["surface"] = surface
+
+        # Not used, only for visualization of interfuser
+        # surface = self._hic.run_interface(tick_data)
+        # tick_data["surface"] = surface
 
         if SAVE_PATH is not None:
             self.save(tick_data)
-
         return control
 
     def save(self, tick_data):
-        frame = self.step // self.skip_frames
-        Image.fromarray(tick_data["surface"]).save(
-            self.save_path / "meta" / ("%04d.jpg" % frame)
-        )
+        # frame = self.step // self.skip_frames
+        # Image.fromarray(tick_data["surface"]).save(
+        #     self.save_path / "meta" / ("%04d.jpg" % frame)
+        # )
         return
 
     def destroy(self):
-        if self.ensemble:
-            del self.nets
-        else:
-            del self.net
+        del self.net

@@ -51,7 +51,7 @@ class Parser(Tap):
         ## if not loading from a config script, skip the result of the setup
         if not hasattr(args, 'config'): return args
         args = self.read_config(args, experiment)
-        self.add_extras(args)
+        # self.add_extras(args)
         self.eval_fstrings(args)
         self.set_seed(args)
         self.get_commit(args)

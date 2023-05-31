@@ -377,6 +377,7 @@ class RouteScenario(BasicScenario):
                 world.debug.draw_string(loc, str(scenario['name']), draw_shadow=False,
                                         color=carla.Color(0, 0, 255), life_time=100000, persistent_lines=True)
 
+        # breakpoint()
         for scenario_number, definition in enumerate(scenario_definitions):
             # Get the class possibilities for this scenario number
             scenario_class = NUMBER_CLASS_TRANSLATION[definition['name']]
@@ -399,8 +400,7 @@ class RouteScenario(BasicScenario):
             route_var_name = "ScenarioRouteNumber{}".format(scenario_number)
             scenario_configuration.route_var_name = route_var_name
             try:
-                scenario_instance = scenario_class(world, [ego_vehicle], scenario_configuration,
-                                                   criteria_enable=False, timeout=timeout)
+                scenario_instance = scenario_class(world, [ego_vehicle], scenario_configuration, criteria_enable=False, timeout=timeout)
                 # Do a tick every once in a while to avoid spawning everything at the same time
                 if scenario_number % scenarios_per_tick == 0:
                     if CarlaDataProvider.is_sync_mode():
@@ -409,6 +409,7 @@ class RouteScenario(BasicScenario):
                         world.wait_for_tick()
 
             except Exception as e:
+                # breakpoint()
                 print("Skipping scenario '{}' due to setup error: {}".format(definition['name'], e))
                 continue
 

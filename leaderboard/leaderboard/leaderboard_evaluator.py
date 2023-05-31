@@ -264,6 +264,7 @@ class LeaderboardEvaluator(object):
 
         # Set up the user's agent, and the timer to avoid freezing the simulation
         try:
+            # breakpoint()
             self._agent_watchdog.start()
             agent_class_name = getattr(self.module_agent, 'get_entry_point')()
             self.agent_instance = getattr(self.module_agent, agent_class_name)(args.agent_config)
@@ -397,7 +398,7 @@ class LeaderboardEvaluator(object):
         """
         # agent_class_name = getattr(self.module_agent, 'get_entry_point')()
         # self.agent_instance = getattr(self.module_agent, agent_class_name)(args.agent_config)
-
+        # breakpoint()
         route_indexer = RouteIndexer(args.routes, args.scenarios, args.repetitions)
 
         if args.resume:
@@ -406,7 +407,7 @@ class LeaderboardEvaluator(object):
         else:
             self.statistics_manager.clear_record(args.checkpoint)
             route_indexer.save_state(args.checkpoint)
-
+        # breakpoint()
         while route_indexer.peek():
             # setup
             config = route_indexer.next()
@@ -463,14 +464,14 @@ def main():
 
     # agent-related options
     parser.add_argument("-a", "--agent", type=str, help="Path to Agent's py file to evaluate", required=True)
-    parser.add_argument("--agent-config", type=str, help="Path to Agent's configuration file", default="")
+    parser.add_argument("--agent-config", type=str, help="Path to Agent's configuration file", default='2')
 
     parser.add_argument("--track", type=str, default='SENSORS', help="Participation track: SENSORS, MAP")
     parser.add_argument('--resume', type=bool, default=False, help='Resume execution from last checkpoint?')
     parser.add_argument("--checkpoint", type=str,
                         default='./simulation_results.json',
                         help="Path to checkpoint used for saving statistics and resuming")
-
+    # breakpoint()
     arguments = parser.parse_args()
 
     statistics_manager = StatisticsManager()
@@ -486,4 +487,6 @@ def main():
 
 
 if __name__ == '__main__':
+    # print(sys.path)
+    # breakpoint()
     main()

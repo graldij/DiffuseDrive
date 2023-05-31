@@ -1,13 +1,16 @@
 #!/bin/bash
 
-export CARLA_ROOT=carla
+export CARLA_ROOT=/home/marcus/Documents/Semester2/RobotLearning/InterFuser/carla
 export CARLA_SERVER=${CARLA_ROOT}/CarlaUE4.sh
+export PYTHONPATH=$PYTHONPATH:/home/marcus/Documents/Semester2/RobotLearning/DiffuseDrive
 export PYTHONPATH=$PYTHONPATH:${CARLA_ROOT}/PythonAPI
 export PYTHONPATH=$PYTHONPATH:${CARLA_ROOT}/PythonAPI/carla
 export PYTHONPATH=$PYTHONPATH:$CARLA_ROOT/PythonAPI/carla/dist/carla-0.9.10-py3.7-linux-x86_64.egg
 export PYTHONPATH=$PYTHONPATH:leaderboard
-export PYTHONPATH=$PYTHONPATH:leaderboard/team_code
+export PYTHONPATH=$PYTHONPATH:team_code
 export PYTHONPATH=$PYTHONPATH:scenario_runner
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/marcus/.mujoco/mujoco210/bin
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/nvidia
 
 export LEADERBOARD_ROOT=leaderboard
 export CHALLENGE_TRACK_CODENAME=SENSORS
@@ -20,9 +23,9 @@ export TEAM_AGENT=leaderboard/team_code/DiffuseDrive_agent.py # agent
 export CHECKPOINT_ENDPOINT=results/sample_result.json # results file
 export SCENARIOS=leaderboard/data/scenarios/town05_all_scenarios.json
 export SAVE_PATH=data/eval # path for saving episodes while evaluating
-export RESUME=True
+export RESUME=$False
 
-python3 ${LEADERBOARD_ROOT}/leaderboard/leaderboard_evaluator.py \
+python ${LEADERBOARD_ROOT}/leaderboard/leaderboard_evaluator.py \
 --scenarios=${SCENARIOS}  \
 --routes=${ROUTES} \
 --repetitions=${REPETITIONS} \

@@ -23,7 +23,7 @@ export CHECKPOINT_ENDPOINT=results/sample_result.json # results file
 #export SCENARIOS=leaderboard/data/scenarios/no_scenarios.json
 export SCENARIOS=leaderboard/data/scenarios/town01_all_scenarios.json 
 export SAVE_PATH=data/expert # path for saving episodes while evaluating
-export RESUME=True
+export RESUME=False
 
 python3 ${LEADERBOARD_ROOT}/leaderboard/leaderboard_evaluator.py \
 --scenarios=${SCENARIOS}  \

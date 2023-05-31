@@ -50,6 +50,7 @@ class DiffuseDriveController(object):
         """
 
         # control steering
+        # breakpoint()
         aim = (waypoints[1] + waypoints[0]) / 2.0
         aim[1] *= -1
         angle = np.degrees(np.pi / 2 - np.arctan2(aim[1], aim[0])) / 90
