@@ -15,6 +15,7 @@ import diffuser.utils as utils
 import matplotlib.pyplot as plt
 from torchvision import transforms
 import random
+from PIL import Image
 
 def cycle(dl):
     while True:
@@ -336,6 +337,99 @@ class Trainer(object):
             
             print("saved image", new_file_name)
             ax.cla()
+
+    def visualize_bev(self, bev_image, batch_size=2, n_samples=2):
+        '''
+            MOD Minxuan: Here I assume following:
+            Assume the bev_image as a parameter to be passed, could integrate it into dataloader
+            we have the BEV image of current frame (not the first point!!), and we take two samples from the diffusion model
+            The ground truth is in purple, two samples in red and yellow
+        '''
+        for i in range(batch_size):
+
+            ## get a single datapoint
+            batch = self.dataloader_vis.__next__()
+            trajectories = to_device(batch.trajectories, self.device)
+            conditions = to_device(batch.conditions, self.device)
+            
+            conditions = einops.repeat(conditions, 'b t d -> (repeat b) t d', repeat =n_samples)
+            
+            if hasattr(batch, "images") and self.ema_model.model.past_image_cond:
+                # normalize images used as condition
+                images = self.images_batch_norm(batch.images)
+                
+                images = to_device(images, self.device)
+                images = einops.repeat(images, 'b t h w d -> (repeat b) t h w d', repeat = n_samples)
+                samples = self.ema_model.conditional_sample(conditions, images=images)
+            else:
+                samples = self.ema_model.conditional_sample(conditions, images=None)
+
+            samples = to_np(samples)
+
+            ## [ n_samples x horizon x observation_dim ]
+            normed_observations = samples[:, :, self.dataset.action_dim:]
+            
+            # TODO Jacopo improve this
+            # de-normalize observations
+            traj_mean, traj_std = self.dataset.get_mean_std_waypoints()
+            sampled_poses = normed_observations * (traj_std + 1e-7) + traj_mean
+            true_trajectories = batch.trajectories * (traj_std + 1e-7) + traj_mean
+
+            
+            fig, ax = plt.subplots()
+            ## plot bev image, hardcode it into 500*500
+            plt.rcParams["figure.figsize"] = (6,6)
+            margin_max = 400 
+            margin_min = 0 
+            ax.set_xlim(margin_min, margin_max)
+            ax.set_ylim(margin_min, margin_max)
+            img = bev_image.transpose(Image.FLIP_TOP_BOTTOM)
+            img = img.resize((500,500))
+            ax.imshow(img, extent=[0,500,0,500])
+            
+            colors = ['r', 'y']
+            ## scale for coloring
+            length = len(true_trajectories)*2
+
+            for sample_pose in sampled_poses:
+                c = colors.pop()
+                for i, poses in enumerate(sample_pose):
+                    dx = np.cos(poses[-1]-np.pi/2)/5
+                    dy = np.sin(poses[-1]-np.pi/2)/5
+                    
+                    #waypoint = np.around(poses*5+20*10).astype(int)
+                    # Hardcode it, scale=5
+                    waypoint = poses*5+250
+                    ax.scatter(waypoint[0], waypoint[1],s=10, color=c, alpha=0.5+i/length)
+                    if i == 11:
+                        ax.arrow(waypoint[0], waypoint[1], dx, dy, head_width=7, color='blue',alpha=0.5+i/length)
+                    ## c represents current, should overlapping of all trajectories
+                    if i== 3:
+                        ax.text(waypoint[0]-0.05, waypoint[1]+0.05, "c", fontsize=10)
+
+            for i, poses in enumerate(true_trajectories):
+                    dx = np.cos(poses[-1]-np.pi/2)/5
+                    dy = np.sin(poses[-1]-np.pi/2)/5
+                    
+                    #waypoint = np.around(poses*5+20*10).astype(int)
+                    # Hardcode it, scale=5
+                    waypoint = poses*5+250
+                    ax.scatter(waypoint[0], waypoint[1],s=10, color='purple', alpha=0.5+i/length)
+                    if i == 11:
+                        ax.arrow(waypoint[0], waypoint[1], dx, dy, head_width=7, color='blue',alpha=0.5+i/length)
+                    ## c represents current, should overlapping of all trajectories
+                    if i == 3:
+                        ax.text(waypoint[0]-0.05, waypoint[1]+0.05, "c", fontsize=10)
+            ## save plot
+            if not os.path.exists('visualize_bev/'+ self.wandb_run.id):
+                os.makedirs('visualize_bev/'+ self.wandb_run.id)
+            new_file_name = 'visualize_bev/'+ self.wandb_run.id +  '/result'+str(self.step) +"b" + str(i) +'.pdf'
+            plt.savefig(new_file_name)
+            
+            print("saved visualization", new_file_name)
+            ax.cla()
+            
+            
 
     def inv_render_samples(self, batch_size=2, n_samples=2):
         '''
