@@ -338,11 +338,11 @@ class Trainer(object):
             print("saved image", new_file_name)
             ax.cla()
 
-    def visualize_bev(self, bev_image, batch_size=2, n_samples=2):
+    def visualize_bev(self, batch_size=2, n_samples=2):
         '''
             MOD Minxuan: Here I assume following:
-            Assume the bev_image as a parameter to be passed, could integrate it into dataloader
-            we have the BEV image of current frame (not the first point!!), and we take two samples from the diffusion model
+            bev image is from the batch called batch.birdview
+            we take two samples from the diffusion model
             The ground truth is in purple, two samples in red and yellow
         '''
         for i in range(batch_size):
@@ -383,7 +383,9 @@ class Trainer(object):
             margin_min = 0 
             ax.set_xlim(margin_min, margin_max)
             ax.set_ylim(margin_min, margin_max)
-            img = bev_image.transpose(Image.FLIP_TOP_BOTTOM)
+            bev_image = batch.birdview
+            img = Image.fromarray(bev_image)
+            img = img.transpose(Image.FLIP_TOP_BOTTOM)
             img = img.resize((500,500))
             ax.imshow(img, extent=[0,500,0,500])
             
