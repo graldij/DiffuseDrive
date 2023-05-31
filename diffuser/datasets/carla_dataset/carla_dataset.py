@@ -264,7 +264,8 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                         # Copy the image to the merged directory with a unique name
                         output= {"actions": action_list, "observations": image_list}
                         ## MOD Minxuan: add bev to output
-                        output["birdview"] = current_bev
+                        if is_valid:
+                            output["birdview"] = current_bev
                         new_name = f"{folder_name_weather}_{folder_name_route}_{file_name_no_suffix}"
                         yield new_name, output
         elif self.config.name == "waypoint_unconditioned":
