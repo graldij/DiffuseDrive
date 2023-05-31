@@ -197,11 +197,15 @@ class Trainer(object):
             # continue
             if self.sample_freq and self.step % self.sample_freq == 0:
                 if self.model.__class__ == diffuser.models.diffusion.GaussianInvDynDiffusion:
+                    raise NotImplementedError
                     self.inv_render_samples()
                 elif self.model.__class__ == diffuser.models.diffusion.ActionGaussianDiffusion:
+                    raise NotImplementedError
                     pass
-                else:
-                    self.render_samples()
+                else: # carla setting
+                    # self.render_samples()
+                    # sample and visualize with bird-eye-view
+                    self.visualize_bev()
                     
                     
             # step scheduler for lr decay
@@ -357,7 +361,14 @@ class Trainer(object):
         for i in range(batch_size):
 
             ## get a single datapoint
+            
+            # speed up 5x the visualization
             batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
+            
             trajectories = to_device(batch.trajectories, self.device)
             conditions = to_device(batch.conditions, self.device)
             
@@ -384,6 +395,8 @@ class Trainer(object):
             sampled_poses = normed_observations * (traj_std + 1e-7) + traj_mean
             true_trajectories = batch.trajectories * (traj_std + 1e-7) + traj_mean
 
+
+            # TODO might add a check if the birdview exists
             
             fig, ax = plt.subplots()
             ## plot bev image, hardcode it into 500*500
@@ -392,44 +405,44 @@ class Trainer(object):
             margin_min = 0 
             ax.set_xlim(margin_min, margin_max)
             ax.set_ylim(margin_min, margin_max)
-            bev_image = batch.birdview
-            img = Image.fromarray(bev_image)
+            bev_image = batch.birdview.numpy()
+            img = Image.fromarray(bev_image.squeeze(), 'RGB')
             img = img.transpose(Image.FLIP_TOP_BOTTOM)
             img = img.resize((500,500))
             ax.imshow(img, extent=[0,500,0,500])
             
             colors = ['r', 'y']
             ## scale for coloring
-            length = len(true_trajectories)*2
+            length = true_trajectories.shape[1]*2
 
             for sample_pose in sampled_poses:
                 c = colors.pop()
-                for i, poses in enumerate(sample_pose):
+                for j, poses in enumerate(sample_pose):
                     dx = np.cos(poses[-1]-np.pi/2)/5
                     dy = np.sin(poses[-1]-np.pi/2)/5
                     
                     #waypoint = np.around(poses*5+20*10).astype(int)
                     # Hardcode it, scale=5
                     waypoint = poses*5+250
-                    ax.scatter(waypoint[0], waypoint[1],s=10, color=c, alpha=0.5+i/length)
-                    if i == 11:
-                        ax.arrow(waypoint[0], waypoint[1], dx, dy, head_width=7, color='blue',alpha=0.5+i/length)
+                    ax.scatter(waypoint[0], waypoint[1],s=10, color=c, alpha=0.5+j/length)
+                    if j == 11:
+                        ax.arrow(waypoint[0], waypoint[1], dx, dy, head_width=7, color='blue',alpha=0.5+j/length)
                     ## c represents current, should overlapping of all trajectories
-                    if i== 3:
+                    if j== 3:
                         ax.text(waypoint[0]-0.05, waypoint[1]+0.05, "c", fontsize=10)
 
-            for i, poses in enumerate(true_trajectories):
+            for j, poses in enumerate(true_trajectories.squeeze()):
                     dx = np.cos(poses[-1]-np.pi/2)/5
                     dy = np.sin(poses[-1]-np.pi/2)/5
                     
                     #waypoint = np.around(poses*5+20*10).astype(int)
                     # Hardcode it, scale=5
                     waypoint = poses*5+250
-                    ax.scatter(waypoint[0], waypoint[1],s=10, color='purple', alpha=0.5+i/length)
-                    if i == 11:
-                        ax.arrow(waypoint[0], waypoint[1], dx, dy, head_width=7, color='blue',alpha=0.5+i/length)
+                    ax.scatter(waypoint[0], waypoint[1],s=10, color='purple', alpha=0.5+j/length)
+                    if j == 11:
+                        ax.arrow(waypoint[0], waypoint[1], dx, dy, head_width=7, color='blue',alpha=0.5+j/length)
                     ## c represents current, should overlapping of all trajectories
-                    if i == 3:
+                    if j == 3:
                         ax.text(waypoint[0]-0.05, waypoint[1]+0.05, "c", fontsize=10)
             ## save plot
             if not os.path.exists('visualize_bev/'+ self.wandb_run.id):

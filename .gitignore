@@ -5,6 +5,7 @@ log/
 __pycache__/
 logs/
 plot/*
+visualize_bev/*
 output/
 decision-diffuser-main/code/weights
 decision-diffuser-main/code/log
