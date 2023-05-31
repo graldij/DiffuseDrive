@@ -1,4 +1,5 @@
 from collections import namedtuple
+from unicodedata import name
 import numpy as np
 import torch
 import pdb
@@ -16,6 +17,9 @@ RewardBatch = namedtuple('Batch', 'trajectories conditions returns')
 ImageBatch = namedtuple('Batch', 'trajectories conditions images')
 Batch = namedtuple('Batch', 'trajectories conditions')
 ValueBatch = namedtuple('ValueBatch', 'trajectories conditions values')
+# MOD Minxuan: add two tuples for validation dataset with/without image conditioning
+ValidBatch = namedtuple('ValidBatch', 'trajectories conditions birdview')
+ValidImageBatch = namedtuple('ValidImageBatch', 'trajectories conditions images birdview')
 
 class SequenceDataset(torch.utils.data.Dataset):
 
@@ -380,6 +384,10 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
         for i in self.dataset.iter(1):
             actions = i["actions"]
             trajectories = np.array(actions).squeeze(0)
+
+            ## MOD Minxuan: add birdview for validation dataset
+            if self.is_valid:
+                bev_img = i["birdview"]
             # filter out the trajectories where the car is not moving, i.e. the maximum values in the horizon (future or past) are close to 0
             if np.absolute(trajectories[:,:-1]).max() <= 1e-6:
                 continue
@@ -396,7 +404,15 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
                     for t, img_temp in enumerate(observations[0][:]):
                         unsqueezed_image = np.array(img_temp)[np.newaxis, :].transpose((0,3,1,2))
                         image[t] = unsqueezed_image
-                    batch = ImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32))
+                    
+                    ## MOD Minxuan: add option for validation dataset, both for conditioning & unconditioning
+                    if self.is_valid:
+                        batch = ValidImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32), np.asarray(bev_img[0]))
+                    else:
+                        batch = ImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32))
                 else:
-                    batch = Batch(trajectories.astype(np.float32), conditions.astype(np.float32))
+                    if self.is_valid:
+                        batch = ValidBatch(trajectories.astype(np.float32), conditions.astype(np.float32), np.asarray(bev_img[0]))
+                    else:
+                        batch = Batch(trajectories.astype(np.float32), conditions.astype(np.float32))
                 yield batch

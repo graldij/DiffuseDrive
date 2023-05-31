@@ -1,11 +1,12 @@
+from fileinput import filename
 import os
 import shutil
 from PIL import Image
 from torchvision import transforms
 import numpy as np
 
-original_dir = "/scratch_net/biwidl216/rl_course_14/extracted_dataset"
-new_dir = "/scratch_net/biwidl216/rl_course_14/extracted_diffusedrive_dataset_rgb"
+original_dir = "/scratch_net/biwidl310/rl_course_18/extracted_dataset"
+new_dir = "/scratch_net/biwidl310/rl_course_18/extracted_diffusedrive_dataset_validation"
 
 
 def create_folder(new_folder_path):
@@ -41,16 +42,21 @@ for folder_name_weather in os.listdir(original_dir):
         folder_path_current = os.path.join(folder_path, folder_name_route)
         folder_path_rgb_front = os.path.join(folder_path_current, "rgb_front")
         folder_path_measurements = os.path.join(folder_path_current, "measurements")
+        ## MOD Minxuan: add virdview for validation
+        folder_path_bev = os.path.join(folder_path_current, "birdview")
 
-        if not os.path.isdir(folder_path_rgb_front) or not os.path.isdir(folder_path_measurements):
+        if not os.path.isdir(folder_path_rgb_front) or not os.path.isdir(folder_path_measurements) or not os.path.isdir(folder_path_bev):
             continue
 
         folder_path_current_new = os.path.join(new_folder_path, folder_name_route)
         folder_path_rgb_front_new = os.path.join(folder_path_current_new, "rgb_front")
         folder_path_measurements_new = os.path.join(folder_path_current_new, "measurements")
+        ## MOD Minxuan: add birdview
+        folder_path_bev_new = os.path.join(folder_path_current_new, "birdview")
         create_folder(folder_path_current_new)
         create_folder(folder_path_rgb_front_new)
         create_folder(folder_path_measurements_new)
+        create_folder(folder_path_bev_new)
 
         # Loop through each file in the folder
         for file_name in os.listdir(folder_path_rgb_front):
@@ -59,6 +65,8 @@ for folder_name_weather in os.listdir(original_dir):
             file_name_no_suffix, _ = os.path.splitext(file_name)
             file_id = int(file_name_no_suffix)
             file_path_measurements = os.path.join(folder_path_measurements, file_name_no_suffix + ".json")
+            ## MOD Minxuan: add birdview
+            file_path_bev = os.path.join(folder_path_bev, file_name)
 
             # Only process image files and ensure the corresponding measurements file exist
             if not file_name.endswith(".jpg") or not os.path.exists(file_path_measurements):
@@ -66,6 +74,7 @@ for folder_name_weather in os.listdir(original_dir):
 
             file_path_rgb_front_new = os.path.join(folder_path_rgb_front_new, file_name_no_suffix + ".jpg")
             file_path_measurements_new = os.path.join(folder_path_measurements_new, file_name_no_suffix + ".json")
+            file_path_bev_new = os.path.join(folder_path_bev_new, file_name_no_suffix + ".jpg")
             # extract jpg format to png
             im = Image.open(file_path_rgb_front)
             im = im.convert('RGB')
@@ -74,6 +83,11 @@ for folder_name_weather in os.listdir(original_dir):
             # im = Image.fromarray(im.numpy())
             im.save(file_path_rgb_front_new, quality=50)
             
+            ## MOD Minxuan: convert bev images
+            bev_im = Image.open(file_path_bev)
+            bev_im = bev_im.convert('RGB')
+            bev_im.save(file_path_bev_new, quality=75)
+            
             loaded_im = Image.open(file_path_rgb_front_new)
             # loaded_im = loaded_im.convert('RGB')
             # breakpoint()
@@ -81,5 +95,6 @@ for folder_name_weather in os.listdir(original_dir):
                 print("same")
             # shutil.copy(filepath_rgb_front, file_path_rgb_front_new)
             shutil.copy(file_path_measurements, file_path_measurements_new)
+            #shutil.copy(file_path_bev, file_path_bev_new)
             i += 1
             print(i)
