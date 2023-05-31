@@ -6,7 +6,7 @@ from torchvision import transforms
 import numpy as np
 
 original_dir = "/scratch_net/biwidl310/rl_course_18/extracted_dataset"
-new_dir = "/scratch_net/biwidl310/rl_course_18/extracted_diffusedrive_dataset_valid_png"
+new_dir = "/scratch_net/biwidl310/rl_course_18/extracted_diffusedrive_dataset_validation"
 
 
 def create_folder(new_folder_path):

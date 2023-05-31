@@ -45,20 +45,20 @@ class CarlaDatasetConfig(datasets.BuilderConfig):
         self.horizon = horizon
         self.is_valid = is_valid
 
-## For Minxuan: path for validation dataset: extracted_diffusedrive_dataset_valid
+## For Minxuan: path for validation dataset: extracted_diffusedrive_dataset_valid_png
 class CarlaDataset(datasets.GeneratorBasedBuilder):
     "Carla Dataset"
     BUILDER_CONFIGS = [
         CarlaDatasetConfig(
             name="unconditioned",
             description="Image only datas for unconditioned diffusion",
-            base_dir="/scratch_net/biwidl310/rl_course_18/sample_test",
+            base_dir="/scratch_net/biwidl310/rl_course_18/extracted_diffusedrive_dataset_valid_png",
             img_buffer_size = 0
         ),
         CarlaDatasetConfig(
             name="waypoint_imageConditioned",
             description="Data for imaged conditioned waypoint diffusion",
-            base_dir="/scratch_net/biwidl310/rl_course_18/sample_test",
+            base_dir="/scratch_net/biwidl310/rl_course_18/extracted_diffusedrive_dataset_valid_png",
             img_buffer_size = 4,
             waypoint_buffer_size = 4,
             waypoint_prediction_size = 6,
@@ -68,7 +68,7 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
         CarlaDatasetConfig(
             name="decdiff",
             description="format for decdiff trainer",
-            base_dir="/scratch_net/biwidl310/rl_course_18/sample_test",
+            base_dir="/scratch_net/biwidl310/rl_course_18/extracted_diffusedrive_dataset_valid_png",
             horizon = 12,
             img_buffer_size = 3,
             img_future_size = 0,
@@ -80,7 +80,7 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
         CarlaDatasetConfig(
             name="waypoint_unconditioned",
             description="format for decdiff trainer",
-            base_dir="/scratch_net/biwidl310/rl_course_18/sample_test",
+            base_dir="/scratch_net/biwidl310/rl_course_18/extracted_diffusedrive_dataset_valid_png",
             horizon = 12,
             waypoint_buffer_size = 3,
             waypoint_prediction_size = 8,
