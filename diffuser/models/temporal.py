@@ -456,6 +456,7 @@ class TemporalUnetCarla(nn.Module):
         calc_energy=False,
         kernel_size=5,
         past_image_cond = False,
+        using_cmd = False,
         image_backbone_freeze = True,
         image_backbone = 'resnet18',
     ):
@@ -477,6 +478,10 @@ class TemporalUnetCarla(nn.Module):
         
         self.past_image_cond = past_image_cond
         self.image_backbone = image_backbone
+        
+        self.img_out_dim = 0
+        self.cmd_out_dim = 0
+        
         # breakpoint()
         if self.past_image_cond:
             if self.image_backbone == 'resnet18':
@@ -496,6 +501,17 @@ class TemporalUnetCarla(nn.Module):
             act_fn,
             nn.Linear(dim * 4, dim),
         )
+        
+        self.using_cmd = using_cmd
+        if self.using_cmd:
+            self.cmd_mlp = nn.Sequential(
+                # input is 6 dim as there are 6 classes
+                nn.Linear(6, 16),
+                act_fn,
+                nn.Linear(16, 4),
+            )
+            self.cmd_out_dim = 4
+        
 
         self.returns_condition = returns_condition
         self.condition_dropout = condition_dropout
@@ -510,10 +526,9 @@ class TemporalUnetCarla(nn.Module):
                         nn.Linear(dim * 4, dim),
                     )
             self.mask_dist = Bernoulli(probs=1-self.condition_dropout)
-            embed_dim = dim + self.img_out_dim # TODO Jacopo this is hardcoded and should be changed
-            # embed_dim = 2*dim
-        else:
-            embed_dim = dim
+        
+        embed_dim = dim + self.img_out_dim + 4* self.cmd_out_dim
+        
 
         self.downs = nn.ModuleList([])
         self.ups = nn.ModuleList([])
@@ -554,7 +569,7 @@ class TemporalUnetCarla(nn.Module):
             nn.Conv1d(dim, transition_dim, 1),
         )
 
-    def forward(self, x, cond, time, images=None, use_dropout=True, force_dropout=False):
+    def forward(self, x, cond, time, images=None, cmd = None, use_dropout=True, force_dropout=False):
         '''
             x : [ batch x horizon x transition ]
             returns : [batch x horizon]
@@ -597,6 +612,25 @@ class TemporalUnetCarla(nn.Module):
                 img_cond = 0*img_cond
             # Concatenate with the time
             t = torch.cat([t, img_cond], dim=-1)
+        
+        # condition on high level commands
+        if self.using_cmd:
+            # breakpoint()
+            stacked_encoded_cmd = torch.zeros((cmd.shape[0], cond.shape[1] * self.cmd_out_dim), device=x.device).type(x.type())
+            # convert to float and to device
+            # cmd_cond = self.cmd_mlp((1.0)*cmd.squeeze(2).to(cond.device))
+            for i in range(cmd.shape[1]): 
+                encoded_cmd = self.cmd_mlp((1.0)*cmd[:,i,:])
+                stacked_encoded_cmd[:, i* self.cmd_out_dim : (i+1) * self.cmd_out_dim] = encoded_cmd
+                cmd_cond = stacked_encoded_cmd
+            if use_dropout:
+                mask = self.mask_dist.sample(sample_shape=(stacked_encoded_cmd.size(0), 1)).to(stacked_encoded_cmd.device)
+                cmd_cond = mask*cmd_cond
+            if force_dropout:
+                cmd_cond = 0*cmd_cond
+            # breakpoint()
+            t = torch.cat([t, cmd_cond], dim=-1)
+                
 
         h = []
 

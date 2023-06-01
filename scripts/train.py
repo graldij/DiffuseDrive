@@ -47,12 +47,13 @@ def main():
         termination_penalty=args.termination_penalty,
         past_image_cond = args.past_image_cond,
         waypoints_normalization = args.waypoints_normalization,
+        using_cmd = args.using_cmd,
     )
 
     ## TODO from Minxuan: need check from Jacopo if it works
     valid_dataset_config = utils.Config(
         args.loader,
-        savepath='dataset_valid_config.pkl',
+        savepath='tmp',
         env=args.dataset,
         horizon=args.horizon,
         normalizer=args.normalizer,
@@ -66,6 +67,7 @@ def main():
         past_image_cond = args.past_image_cond,
         waypoints_normalization = args.waypoints_normalization,
         is_valid = True,
+        using_cmd = args.using_cmd,
     )
 
     render_config = utils.Config(
@@ -138,6 +140,7 @@ def main():
             device=args.device,
             past_image_cond = args.past_image_cond,
             image_backbone_freeze = args.image_backbone_freeze,
+            using_cmd = args.using_cmd,
             # attention??
         )
 
@@ -181,6 +184,8 @@ def main():
         n_reference=args.n_reference,
         train_device=args.device,
         save_checkpoints=args.save_checkpoints,
+        save_final=args.save_final,
+        final_model_path = args.final_model_path,
     )
     # -----------------------------------------------------------------------------#
     # -------------------------------- instantiate --------------------------------#

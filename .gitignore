@@ -5,6 +5,7 @@ log/
 __pycache__/
 logs/
 plot/*
+visualize_bev/*
 output/
 decision-diffuser-main/code/weights
 decision-diffuser-main/code/log
@@ -13,5 +14,5 @@ decision-diffuser-main/code/analysis/plot/*
 checkpoint/
 diffuser/__init__.pyc
 diffuser/*/__init__.pyc
-train_models
 results/*
+trained_models/*

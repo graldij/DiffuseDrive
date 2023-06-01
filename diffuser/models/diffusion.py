@@ -963,11 +963,11 @@ class GaussianInvDynDiffusionCarla(nn.Module):
         posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
-    def p_mean_variance(self, x, cond, t, returns=None):
+    def p_mean_variance(self, x, cond, t, returns=None, cmd = None):
         if self.returns_condition:
             # epsilon could be epsilon or x0 itself
-            epsilon_cond = self.model(x, cond, t, returns, use_dropout=False)
-            epsilon_uncond = self.model(x, cond, t, returns, force_dropout=True)
+            epsilon_cond = self.model(x, cond, t, returns, cmd = cmd, use_dropout=False)
+            epsilon_uncond = self.model(x, cond, t, returns, cmd=cmd, force_dropout=True)
             epsilon = epsilon_uncond + self.condition_guidance_w*(epsilon_cond - epsilon_uncond)
         else:
             epsilon = self.model(x, cond, t)
@@ -985,16 +985,16 @@ class GaussianInvDynDiffusionCarla(nn.Module):
         return model_mean, posterior_variance, posterior_log_variance
 
     @torch.no_grad()
-    def p_sample(self, x, cond, t, returns=None):
+    def p_sample(self, x, cond, t, returns=None, cmd = None):
         b, *_, device = *x.shape, x.device
-        model_mean, _, model_log_variance = self.p_mean_variance(x=x, cond=cond, t=t, returns=returns)
+        model_mean, _, model_log_variance = self.p_mean_variance(x=x, cond=cond, t=t, returns=returns, cmd = cmd)
         noise = 0.5*torch.randn_like(x)
         # no noise when t == 0
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
     @torch.no_grad()
-    def p_sample_loop(self, shape, cond, returns=None, verbose=True, return_diffusion=False):
+    def p_sample_loop(self, shape, cond, returns=None, cmd = None, verbose=True, return_diffusion=False):
         device = self.betas.device
 
         batch_size = shape[0]
@@ -1006,7 +1006,7 @@ class GaussianInvDynDiffusionCarla(nn.Module):
         progress = utils.Progress(self.n_timesteps) if verbose else utils.Silent()
         for i in reversed(range(0, self.n_timesteps)):
             timesteps = torch.full((batch_size,), i, device=device, dtype=torch.long)
-            x = self.p_sample(x, cond, timesteps, returns)
+            x = self.p_sample(x, cond, timesteps, returns, cmd)
             x[:, 0:4, :] = cond
 
             progress.update({'t': i})
@@ -1021,7 +1021,7 @@ class GaussianInvDynDiffusionCarla(nn.Module):
             return x
 
     @torch.no_grad()
-    def conditional_sample(self, cond, images=None, horizon=None, *args, **kwargs):
+    def conditional_sample(self, cond, images=None, cmd = None, horizon=None, *args, **kwargs):
         '''
             conditions : [ (time, state), ... ]
         '''
@@ -1030,7 +1030,8 @@ class GaussianInvDynDiffusionCarla(nn.Module):
         horizon = horizon or self.horizon
         shape = (batch_size, horizon, self.observation_dim)
 
-        return self.p_sample_loop(shape, cond, images, *args, **kwargs)
+        return self.p_sample_loop(shape, cond, images, cmd, *args, **kwargs)
+    
     #------------------------------------------ training ------------------------------------------#
 
     def q_sample(self, x_start, t, noise=None):
@@ -1044,7 +1045,7 @@ class GaussianInvDynDiffusionCarla(nn.Module):
 
         return sample
 
-    def p_losses(self, x_start, cond, t, returns=None):
+    def p_losses(self, x_start, cond, t, returns=None, cmd = None):
         # noise = torch.randn_like(x_start).type(torch.FloatTensor)
         noise = torch.randn_like(x_start)
 
@@ -1054,7 +1055,7 @@ class GaussianInvDynDiffusionCarla(nn.Module):
         x_noisy[:, 0:4, :] = x_start[:, 0:4, :]
 
         # [Note]here returns is the images
-        x_recon = self.model(x_noisy, cond, t, returns)
+        x_recon = self.model(x_noisy, cond, t, returns, cmd)
 
         if not self.predict_epsilon:
             x_recon[:, 0:4, :] = x_start[:, 0:4, :]
@@ -1068,7 +1069,7 @@ class GaussianInvDynDiffusionCarla(nn.Module):
 
         return loss, info
 
-    def loss(self, x, cond, returns=None):
+    def loss(self, x, cond, returns=None, cmd = None):
         if self.train_only_inv:
             # # Calculating inv loss
             # x_t = x[:, :-1, self.action_dim:]
@@ -1087,8 +1088,9 @@ class GaussianInvDynDiffusionCarla(nn.Module):
             raise NotImplementedError
         else:
             batch_size = len(x)
+            # breakpoint()
             t = torch.randint(0, self.n_timesteps, (batch_size,), device=x.device).long()
-            diffuse_loss, info = self.p_losses(x[:, :, self.action_dim:], cond, t, returns)
+            diffuse_loss, info = self.p_losses(x[:, :, self.action_dim:], cond, t, returns, cmd)
             # Calculating inv loss
             # x_t = x[:, :-1, self.action_dim:]
             # a_t = x[:, :-1, :self.action_dim]

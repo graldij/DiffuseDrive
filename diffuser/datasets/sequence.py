@@ -1,4 +1,5 @@
 from collections import namedtuple
+from unicodedata import name
 import numpy as np
 import torch
 import pdb
@@ -16,6 +17,14 @@ RewardBatch = namedtuple('Batch', 'trajectories conditions returns')
 ImageBatch = namedtuple('Batch', 'trajectories conditions images')
 Batch = namedtuple('Batch', 'trajectories conditions')
 ValueBatch = namedtuple('ValueBatch', 'trajectories conditions values')
+# MOD Minxuan: add two tuples for validation dataset with/without image conditioning
+ValidBatch = namedtuple('ValidBatch', 'trajectories conditions birdview')
+ValidImageBatch = namedtuple('ValidImageBatch', 'trajectories conditions images birdview')
+# MOD Minxuan: add cmd for validation & training dataset with/without cmd
+CmdBatch = namedtuple('CmdValueBatch', 'trajectories conditions cmd')
+CmdImageBatch = namedtuple('CmdImageBatch', 'trajectories conditions images cmd')
+ValidCmdBatch = namedtuple('ValidCmdValueBatch', 'trajectories conditions cmd birdview')
+ValidCmdImageBatch = namedtuple('ValidCmdImageBatch', 'trajectories conditions images cmd birdview')
 
 class SequenceDataset(torch.utils.data.Dataset):
 
@@ -242,7 +251,7 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
 
     def __init__(self, env='carla-expert', horizon=64,
         normalizer='LimitsNormalizer', preprocess_fns=[], max_path_length=1000,
-        max_n_episodes=10000, termination_penalty=0, use_padding=True, discount=0.99, returns_scale=1000, include_returns=False, past_image_cond = True, waypoints_normalization = None, is_valid = False):
+        max_n_episodes=10000, termination_penalty=0, use_padding=True, discount=0.99, returns_scale=1000, include_returns=False, past_image_cond = True, waypoints_normalization = None, is_valid = False, using_cmd = False):
         self.preprocess_fn = get_preprocess_fn(preprocess_fns, env)
         # self.env = env = load_environment(env)
         self.returns_scale = returns_scale
@@ -257,12 +266,13 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
         self.waypoints_normalization = waypoints_normalization
         
         if past_image_cond:
-            self.dataset = load_dataset("diffuser/datasets/carla_dataset", "decdiff", is_valid = is_valid, streaming=True, split="train")
+            self.dataset = load_dataset("diffuser/datasets/carla_dataset", "decdiff", is_valid = is_valid, using_cmd = using_cmd, streaming=True, split="train")
         else:
-            self.dataset = load_dataset("diffuser/datasets/carla_dataset", "waypoint_unconditioned", is_valid = is_valid, streaming=True, split="train")
+            self.dataset = load_dataset("diffuser/datasets/carla_dataset", "waypoint_unconditioned", is_valid = is_valid, using_cmd = using_cmd, streaming=True, split="train")
         
-        ## MOD Minxuan, add is_valid
+        ## MOD Minxuan, add is_valid, using_cmd
         self.is_valid = is_valid
+        self.using_cmd = using_cmd
         ## not shuffle for validation set, perhaps could be comment
         if not self.is_valid:
             self.dataset.shuffle(seed=42, buffer_size=50)
@@ -380,10 +390,28 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
         for i in self.dataset.iter(1):
             actions = i["actions"]
             trajectories = np.array(actions).squeeze(0)
+
+            ## MOD Minxuan: add birdview for validation dataset
+            if self.is_valid:
+                bev_img = i["birdview"]
+            if self.using_cmd:
+                ## after squeeze shape: (4,1)
+                cmd = i["cmd"]
+                cmd = np.array(cmd).reshape(4)
+                # cmd have values from 1 to 6, we need to convert it to one hot encoding
+                cmd = torch.nn.functional.one_hot(torch.from_numpy(cmd - 1), num_classes=6)
+                cmd = cmd.numpy()
             # filter out the trajectories where the car is not moving, i.e. the maximum values in the horizon (future or past) are close to 0
             if np.absolute(trajectories[:,:-1]).max() <= 1e-6:
                 continue
             else:
+                # if the car is not turning, we keep the sample with probability 0.1 and discard it with probability 0.9. 
+                # Car is not turning if the max value of the x direction is less than 10/5 (/5 coming from the normalization and visualization with bev)
+                if np.absolute(trajectories[:,0]).max() <= 10/5:
+                    # generate a random boolean variable with probability of beging true of 0.1
+                    keep_sample = np.random.choice([True, False], p=[0.01, 0.99])
+                    if not keep_sample:
+                        continue
                 # Normalize waypoints
                 traj_mean, traj_std = self.get_mean_std_waypoints()
                 trajectories = (trajectories - traj_mean)/(traj_std + 1e-7)
@@ -396,7 +424,29 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
                     for t, img_temp in enumerate(observations[0][:]):
                         unsqueezed_image = np.array(img_temp)[np.newaxis, :].transpose((0,3,1,2))
                         image[t] = unsqueezed_image
-                    batch = ImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32))
+                    
+                    ## MOD Minxuan: add cmd
+                    ## MOD Minxuan: add option for validation dataset, both for conditioning & unconditioning
+                    if self.is_valid:
+                        if self.using_cmd:
+                            # breakpoint()
+                            batch = ValidCmdImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32), cmd.astype(int), np.asarray(bev_img[0]))
+                        else:
+                            batch = ValidImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32), np.asarray(bev_img[0]))
+                    else:
+                        if self.using_cmd:
+                            batch = CmdImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32),  image.astype(np.float32), cmd.astype(int),)
+                        else:
+                            batch = ImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32))
                 else:
-                    batch = Batch(trajectories.astype(np.float32), conditions.astype(np.float32))
+                    if self.is_valid:
+                        if self.using_cmd:
+                            batch = ValidCmdBatch(trajectories.astype(np.float32), conditions.astype(np.float32), np.asarray(bev_img[0]), cmd.astype(int))
+                        else:
+                            batch = ValidBatch(trajectories.astype(np.float32), conditions.astype(np.float32), np.asarray(bev_img[0]))
+                    else:
+                        if self.using_cmd:
+                            batch = CmdBatch(trajectories.astype(np.float32), conditions.astype(np.float32), cmd.astype(int))
+                        else:
+                            batch = Batch(trajectories.astype(np.float32), conditions.astype(np.float32))
                 yield batch

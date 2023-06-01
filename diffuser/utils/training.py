@@ -15,6 +15,7 @@ import diffuser.utils as utils
 import matplotlib.pyplot as plt
 from torchvision import transforms
 import random
+from PIL import Image
 
 def cycle(dl):
     while True:
@@ -73,6 +74,8 @@ class Trainer(object):
         bucket=None,
         train_device='cuda',
         save_checkpoints=False,
+        save_final=True,
+        final_model_path = None,
     ):
         super().__init__()
         self.model = diffusion_model
@@ -80,6 +83,9 @@ class Trainer(object):
         self.ema_model = copy.deepcopy(self.model)
         self.update_ema_every = update_ema_every
         self.save_checkpoints = save_checkpoints
+        
+        self.save_final = save_final
+        self.savepath = final_model_path
 
         self.step_start_ema = step_start_ema
         self.log_freq = log_freq
@@ -156,7 +162,7 @@ class Trainer(object):
                 # if conditioning on past images is True, then need to normalize the images
                 if self.model.model.past_image_cond:
                     normalized_batch = self.images_batch_norm(batch.images)
-                    new_batch = (batch.trajectories, batch.conditions, normalized_batch)
+                    new_batch = (batch.trajectories, batch.conditions, normalized_batch, batch.cmd) if self.model.model.using_cmd else (batch.trajectories, batch.conditions, normalized_batch)
                     batch = new_batch
                 loss, infos = self.model.loss(*batch)
                 loss = loss / self.gradient_accumulate_every
@@ -169,8 +175,8 @@ class Trainer(object):
             if self.step % self.update_ema_every == 0:
                 self.step_ema()
                 
-            if self.step % self.save_freq == 0:
-                self.save()
+            if self.step % self.save_freq == 0 and self.save_checkpoints:
+                self.save(savepath=self.savepath)
 
             if self.step % self.log_freq == 0:
                 infos_str = ' | '.join([f'{key}: {val:8.4f}' for key, val in infos.items()])
@@ -191,19 +197,26 @@ class Trainer(object):
             # continue
             if self.sample_freq and self.step % self.sample_freq == 0:
                 if self.model.__class__ == diffuser.models.diffusion.GaussianInvDynDiffusion:
+                    raise NotImplementedError
                     self.inv_render_samples()
                 elif self.model.__class__ == diffuser.models.diffusion.ActionGaussianDiffusion:
+                    raise NotImplementedError
                     pass
-                else:
-                    self.render_samples()
+                else: # carla setting
+                    # self.render_samples()
+                    # sample and visualize with bird-eye-view
+                    self.visualize_bev()
                     
                     
             # step scheduler for lr decay
             self.scheduler.step()
             
             self.step += 1
+            
+        if self.save_final:
+            self.save(savepath=self.savepath)
 
-    def save(self):
+    def save(self, savepath=None):
         '''
             saves model and ema to disk;
             syncs to storage bucket if a bucket is specified
@@ -214,13 +227,14 @@ class Trainer(object):
             'ema': self.ema_model.state_dict()
         }
         # savepath = os.path.join(self.bucket, 'checkpoint')
-        savepath = 'checkpoint'
+        savepath = savepath +'/'+ self.wandb_run.id
+        
         os.makedirs(savepath, exist_ok=True)
         # logger.save_torch(data, savepath)
         if self.save_checkpoints:
             savepath = os.path.join(savepath, f'state_{self.step}.pt')
         else:
-            savepath = os.path.join(savepath, 'state.pt')
+            savepath = os.path.join(savepath, 'step_model_ema.pt')
         torch.save(data, savepath)
         logger.info(f'[ utils/training ] Saved model to {savepath}')
 
@@ -293,9 +307,19 @@ class Trainer(object):
                 
                 images = to_device(images, self.device)
                 images = einops.repeat(images, 'b t h w d -> (repeat b) t h w d', repeat = n_samples)
-                samples = self.ema_model.conditional_sample(conditions, images=images)
+                if self.ema_model.model.using_cmd:
+                    commands = batch.cmd
+                    commands = to_device(commands, self.device)
+                    samples = self.ema_model.conditional_sample(conditions, images=images, cmd = commands)
+                else:
+                    samples = self.ema_model.conditional_sample(conditions, images=images, cmd = None)
             else:
-                samples = self.ema_model.conditional_sample(conditions, images=None)
+                if self.ema_model.model.using_cmd:
+                    commands = batch.cmd
+                    commands = to_device(commands, self.device)
+                    samples = self.ema_model.conditional_sample(conditions, images=None, cmd = commands)
+                else:
+                    samples = self.ema_model.conditional_sample(conditions, images=None, cmd = None)
 
             samples = to_np(samples)
 
@@ -336,6 +360,122 @@ class Trainer(object):
             
             print("saved image", new_file_name)
             ax.cla()
+
+    def visualize_bev(self, batch_size=2, n_samples=2):
+        '''
+            MOD Minxuan: Here I assume following:
+            bev image is from the batch called batch.birdview
+            we take two samples from the diffusion model
+            The ground truth is in purple, two samples in red and yellow
+        '''
+        for i in range(batch_size):
+
+            ## get a single datapoint
+            
+            # speed up 5x the visualization
+            batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
+            # batch = self.dataloader_vis.__next__()
+            # batch = self.dataloader_vis.__next__()
+            # batch = self.dataloader_vis.__next__()
+            
+            trajectories = to_device(batch.trajectories, self.device)
+            conditions = to_device(batch.conditions, self.device)
+            
+            conditions = einops.repeat(conditions, 'b t d -> (repeat b) t d', repeat =n_samples)
+            
+            if hasattr(batch, "images") and self.ema_model.model.past_image_cond:
+                # normalize images used as condition
+                images = self.images_batch_norm(batch.images)
+                
+                images = to_device(images, self.device)
+                images = einops.repeat(images, 'b t h w d -> (repeat b) t h w d', repeat = n_samples)
+                if self.ema_model.model.using_cmd:
+                    commands = batch.cmd
+                    commands = to_device(commands, self.device)
+                    commands = einops.repeat(commands, 'b t h  -> (repeat b) t h ', repeat = n_samples)
+                    samples = self.ema_model.conditional_sample(conditions, images=images, cmd = commands)
+                else:
+                    samples = self.ema_model.conditional_sample(conditions, images=images, cmd = None)
+            else:
+                if self.ema_model.model.using_cmd:
+                    commands = batch.cmd
+                    commands = to_device(commands, self.device)
+                    commands = einops.repeat(commands, 'b t h  -> (repeat b) t h ', repeat = n_samples)
+                    samples = self.ema_model.conditional_sample(conditions, images=None, cmd = commands)
+                else:
+                    samples = self.ema_model.conditional_sample(conditions, images=None, cmd = None)
+
+            samples = to_np(samples)
+
+            ## [ n_samples x horizon x observation_dim ]
+            normed_observations = samples[:, :, self.dataset.action_dim:]
+            
+            # TODO Jacopo improve this
+            # de-normalize observations
+            traj_mean, traj_std = self.dataset.get_mean_std_waypoints()
+            sampled_poses = normed_observations * (traj_std + 1e-7) + traj_mean
+            true_trajectories = batch.trajectories * (traj_std + 1e-7) + traj_mean
+
+
+            # TODO might add a check if the birdview exists
+            
+            fig, ax = plt.subplots()
+            ## plot bev image, hardcode it into 500*500
+            plt.rcParams["figure.figsize"] = (6,6)
+            margin_max = 400 
+            margin_min = 0 
+            ax.set_xlim(margin_min, margin_max)
+            ax.set_ylim(margin_min, margin_max)
+            bev_image = batch.birdview.numpy()
+            img = Image.fromarray(bev_image.squeeze(), 'RGB')
+            img = img.transpose(Image.FLIP_TOP_BOTTOM)
+            img = img.resize((500,500))
+            ax.imshow(img, extent=[0,500,0,500])
+            
+            colors = ['r', 'y']
+            ## scale for coloring
+            length = true_trajectories.shape[1]*2
+
+            for sample_pose in sampled_poses:
+                c = colors.pop()
+                for j, poses in enumerate(sample_pose):
+                    dx = np.cos(poses[-1]-np.pi/2)/5
+                    dy = np.sin(poses[-1]-np.pi/2)/5
+                    
+                    #waypoint = np.around(poses*5+20*10).astype(int)
+                    # Hardcode it, scale=5
+                    waypoint = poses*5+250
+                    ax.scatter(waypoint[0], waypoint[1],s=10, color=c, alpha=0.5+j/length)
+                    if j == 11:
+                        ax.arrow(waypoint[0], waypoint[1], dx, dy, head_width=7, color='blue',alpha=0.5+j/length)
+                    ## c represents current, should overlapping of all trajectories
+                    if j== 3:
+                        ax.text(waypoint[0]-0.05, waypoint[1]+0.05, "c", fontsize=10)
+
+            for j, poses in enumerate(true_trajectories.squeeze()):
+                    dx = np.cos(poses[-1]-np.pi/2)/5
+                    dy = np.sin(poses[-1]-np.pi/2)/5
+                    
+                    #waypoint = np.around(poses*5+20*10).astype(int)
+                    # Hardcode it, scale=5
+                    waypoint = poses*5+250
+                    ax.scatter(waypoint[0], waypoint[1],s=10, color='purple', alpha=0.5+j/length)
+                    if j == 11:
+                        ax.arrow(waypoint[0], waypoint[1], dx, dy, head_width=7, color='blue',alpha=0.5+j/length)
+                    ## c represents current, should overlapping of all trajectories
+                    if j == 3:
+                        ax.text(waypoint[0]-0.05, waypoint[1]+0.05, "c", fontsize=10)
+            ## save plot
+            if not os.path.exists('visualize_bev/'+ self.wandb_run.id):
+                os.makedirs('visualize_bev/'+ self.wandb_run.id)
+            new_file_name = 'visualize_bev/'+ self.wandb_run.id +  '/result'+str(self.step) +"b" + str(i) +'.pdf'
+            plt.savefig(new_file_name)
+            
+            print("saved visualization", new_file_name)
+            ax.cla()
+            
+            
 
     def inv_render_samples(self, batch_size=2, n_samples=2):
         '''
