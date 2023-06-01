@@ -397,9 +397,9 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                             current_waypoint_ego = numpy.array([0.0, 0.0, 0.0])
 
                             past_waypoint_gps = self.get_past_waypoint_gps(file_id, folder_path_measurements)
-                            past_waypoint_ego = self.convert_gps_to_ego(past_waypoint_gps, current_waypoint_gps)
+                            past_waypoint_ego = convert_gps_to_ego(past_waypoint_gps, current_waypoint_gps)
                             future_waypoint_gps = self.get_future_waypoint_gps(file_id, folder_path_measurements)
-                            future_waypoint_ego = self.convert_gps_to_ego(future_waypoint_gps, current_waypoint_gps)
+                            future_waypoint_ego = convert_gps_to_ego(future_waypoint_gps, current_waypoint_gps)
                             high_level_cmd_gps = self.get_high_level_cmd_gps(file_id, folder_path_measurements)
                         # TODO: change this high_level_cmd last dim is command not orientation
                         high_level_cmd_ego = self.convert_high_level_cmd_to_ego(high_level_cmd_gps, current_waypoint_gps)
@@ -424,9 +424,9 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
             current_waypoint_ego = numpy.array([0.0, 0.0, 0.0])
 
             past_waypoint_gps, past_waypoint_flag = self.get_past_waypoint_gps(file_id, folder_path_measurements)
-            past_waypoint_ego = self.convert_gps_to_ego(past_waypoint_gps, current_waypoint_gps)
+            past_waypoint_ego = convert_gps_to_ego(past_waypoint_gps, current_waypoint_gps)
             future_waypoint_gps, future_waypoint_flag = self.get_future_waypoint_gps(file_id, folder_path_measurements)
-            future_waypoint_ego = self.convert_gps_to_ego(future_waypoint_gps, current_waypoint_gps)
+            future_waypoint_ego = convert_gps_to_ego(future_waypoint_gps, current_waypoint_gps)
 
             if future_waypoint_flag * past_waypoint_flag < 1:
                 return None, False
@@ -548,22 +548,7 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
         
         return future_img, True
 
-    def convert_gps_to_ego(self, gps_waypoints, current_gps_waypoint):
-        ego_waypoint = [None] * len(gps_waypoints)
-        for t in range(len(gps_waypoints)):
-            if not isinstance(gps_waypoints[t], numpy.ndarray):
-                break
 
-            ego_waypoint[t] = self.transform_2d_points(
-                numpy.zeros((1,3)),
-                numpy.pi / 2 - gps_waypoints[t][2],
-                    -gps_waypoints[t][0],
-                    -gps_waypoints[t][1],
-                    numpy.pi / 2 - current_gps_waypoint[2],
-                    -current_gps_waypoint[0],
-                    -current_gps_waypoint[1],
-            )
-        return ego_waypoint
 
     def convert_high_level_cmd_to_ego(self, high_level_cmd, current_gps_waypoint):
         high_level_cmd_ego = [None] * len(high_level_cmd)
@@ -583,33 +568,50 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
             high_level_cmd_ego[t] = numpy.array([ego_waypoint[0,0], ego_waypoint[0,1], cmd])
         return high_level_cmd_ego
 
-    def transform_2d_points(self, xyz, r1, t1_x, t1_y, r2, t2_x, t2_y):
-        """
-        Build a rotation matrix and take the dot product.
-        """
-        # z value to 1 for rotation
-        xy1 = xyz.copy()
-        xy1[:, 2] = 1
-        xy1_front = xy1.copy()
-        xy1_front[:,0] += 1.0
+def convert_gps_to_ego(gps_waypoints, current_gps_waypoint):
+    ego_waypoint = [None] * len(gps_waypoints)
+    for t in range(len(gps_waypoints)):
+        if not isinstance(gps_waypoints[t], numpy.ndarray):
+            break
 
-        c, s = numpy.cos(r1), numpy.sin(r1)
-        r1_to_world = numpy.matrix([[c, s, t1_x], [-s, c, t1_y], [0, 0, 1]])
+        ego_waypoint[t] = transform_2d_points(
+            numpy.zeros((1,3)),
+            numpy.pi / 2 - gps_waypoints[t][2],
+                -gps_waypoints[t][0],
+                -gps_waypoints[t][1],
+                numpy.pi / 2 - current_gps_waypoint[2],
+                -current_gps_waypoint[0],
+                -current_gps_waypoint[1],
+        )
+    return ego_waypoint
 
-        # np.dot converts to a matrix, so we explicitly change it back to an array
-        world = numpy.asarray(r1_to_world @ xy1.T)
-        world_front = numpy.asarray(r1_to_world @ xy1_front.T)
+def transform_2d_points(xyz, r1, t1_x, t1_y, r2, t2_x, t2_y):
+    """
+    Build a rotation matrix and take the dot product.
+    """
+    # z value to 1 for rotation
+    xy1 = xyz.copy()
+    xy1[:, 2] = 1
+    xy1_front = xy1.copy()
+    xy1_front[:,0] += 1.0
 
-        c, s = numpy.cos(r2), numpy.sin(r2)
-        r2_to_world = numpy.matrix([[c, s, t2_x], [-s, c, t2_y], [0, 0, 1]])
-        world_to_r2 = numpy.linalg.inv(r2_to_world)
+    c, s = numpy.cos(r1), numpy.sin(r1)
+    r1_to_world = numpy.matrix([[c, s, t1_x], [-s, c, t1_y], [0, 0, 1]])
 
-        out = numpy.asarray(world_to_r2 @ world).T
-        out_front = numpy.asarray(world_to_r2 @ world_front).T
-        # reset z-coordinate
-        out[:, 2] = numpy.arctan2(out_front[:,1]-out[:,1], out_front[:,0] - out[:,0])
+    # np.dot converts to a matrix, so we explicitly change it back to an array
+    world = numpy.asarray(r1_to_world @ xy1.T)
+    world_front = numpy.asarray(r1_to_world @ xy1_front.T)
 
-        return out
+    c, s = numpy.cos(r2), numpy.sin(r2)
+    r2_to_world = numpy.matrix([[c, s, t2_x], [-s, c, t2_y], [0, 0, 1]])
+    world_to_r2 = numpy.linalg.inv(r2_to_world)
+
+    out = numpy.asarray(world_to_r2 @ world).T
+    out_front = numpy.asarray(world_to_r2 @ world_front).T
+    # reset z-coordinate
+    out[:, 2] = numpy.arctan2(out_front[:,1]-out[:,1], out_front[:,0] - out[:,0])
+
+    return out
 
     ## MOD Minxuan: Get current + past command
     def get_cmd_list(self, file_path_measurements, file_id, folder_path_measurements):

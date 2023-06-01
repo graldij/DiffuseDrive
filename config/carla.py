@@ -40,6 +40,7 @@ base = {
         "test_ret": 0.9,
         "renderer": "utils.MuJoCoRenderer",
         "past_image_cond": True, 
+        "checkpoint_path": 'TODO.pth.tar',
         "using_cmd": True,
         
         ## dataset
@@ -88,45 +89,25 @@ base = {
         'bucket': None,
         'device': 'cuda',
         'seed': 100,
+        
+        
+        # planning with learned model on carla
+        'turn_KP': 1.25,
+        'turn_KI': 0.75,
+        'turn_KD': 0.3,
+        'turn_n': 40, # buffer size
+
+        'speed_KP': 5.0,
+        'speed_KI': 0.5,
+        'speed_KD': 1.0,
+        'speed_n': 40,  # buffer size
+
+        'max_throttle': 0.75,  # upper limit on throttle signal value in dataset
+        'brake_speed': 0.1,  # desired speed below which brake is triggered
+        'brake_ratio': 1.1,  # ratio of speed to desired speed at which brake is triggered
+        'clip_delta': 0.35,  # maximum change in speed input to logitudinal controller
+
+        'skip_frames': 1,
     },
-    'plan': {
-        'guide': 'sampling.ValueGuide',
-        'policy': 'sampling.GuidedPolicy',
-        'max_episode_length': 1000,
-        'batch_size': 64,
-        'preprocess_fns': [],
-        'device': 'cuda',
-        'seed': None,
 
-        ## sample_kwargs
-        'n_guide_steps': 2,
-        'scale': 0.1,
-        't_stopgrad': 2,
-        'scale_grad_by_std': True,
-
-        ## serialization
-        'loadbase': None,
-        'logbase': logbase,
-        'prefix': 'plans/',
-        'exp_name': watch(args_to_watch),
-        'vis_freq': 100,
-        'max_render': 8,
-
-        ## diffusion model
-        'horizon': 32,
-        'n_diffusion_steps': 20,
-
-        ## value function
-        'discount': 0.997,
-
-        ## loading
-        'diffusion_loadpath': 'f:diffusion/defaults_H{horizon}_T{n_diffusion_steps}',
-        'value_loadpath': 'f:values/defaults_H{horizon}_T{n_diffusion_steps}_d{discount}',
-
-        'diffusion_epoch': 'latest',
-        'value_epoch': 'latest',
-
-        'verbose': True,
-        'suffix': '0',
-    },
 }
