@@ -47,6 +47,7 @@ def main():
         termination_penalty=args.termination_penalty,
         past_image_cond = args.past_image_cond,
         waypoints_normalization = args.waypoints_normalization,
+        using_cmd = args.using_cmd,
     )
 
     ## TODO from Minxuan: need check from Jacopo if it works
@@ -66,6 +67,7 @@ def main():
         past_image_cond = args.past_image_cond,
         waypoints_normalization = args.waypoints_normalization,
         is_valid = True,
+        using_cmd = args.using_cmd,
     )
 
     render_config = utils.Config(
@@ -138,6 +140,7 @@ def main():
             device=args.device,
             past_image_cond = args.past_image_cond,
             image_backbone_freeze = args.image_backbone_freeze,
+            using_cmd = args.using_cmd,
             # attention??
         )
 
