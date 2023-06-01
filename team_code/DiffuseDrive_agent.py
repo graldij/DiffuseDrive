@@ -251,8 +251,9 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         self.step = -1
         self.wall_start = time.time()
         self.initialized = False
-        self.skip_prediction_frame = 10
+        self.skip_prediction_frame = 20
         self.past_pred_waypoints = None
+        self.device = torch.device('cuda')
         
         # TODO Marcus in theory it should not matter much what size we input into the evaluation network as it is resized anyway. Also: the semantic segm. backbone we are using resizes the input anyway to a larger size.
         self.rgb_front_transform = create_carla_rgb_transform(224)
@@ -294,7 +295,7 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         self.net.load_state_dict(data['ema'])
         # self.net.cuda()
         self.net.eval()
-        self.net.to("cpu")
+        self.net.to(self.device)
         
         self.softmax = torch.nn.Softmax(dim=1)
         
@@ -629,11 +630,11 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
             # TODO Jacopo: how many trajectories should we sample? And how to handle them if more than one?
             # breakpoint()
             # TODO Marcus: implement carla-data to our expected input. diffusedrive_input should be a tuple of (conditions, images). See trainin.py at fuction render_samples.
-            diffusedrive_input = self.carla2diffusedrive_data(input_data, self.past_image_cond)
-            
-            # forward pass samples trajectories (calling conditional_sample function)
             if self.past_pred_waypoints is None or self.step % self.skip_prediction_frame == 0:
-                diffused_waypoints = self.net(cond = diffusedrive_input[0], images = diffusedrive_input[1])
+                diffusedrive_input = self.carla2diffusedrive_data(input_data, self.past_image_cond)
+
+                # forward pass samples trajectories (calling conditional_sample function)
+                diffused_waypoints = self.net(cond = diffusedrive_input[0].to(self.device), images = diffusedrive_input[1].to(self.device))
                 diffused_waypoints = diffused_waypoints.detach().cpu().numpy()
                 # TODO Marcus: pred_waypoints should be non-normalized, with [0] being the current position (I think)
                 pred_waypoints = self.diffusedrive2carla_data(diffused_waypoints)

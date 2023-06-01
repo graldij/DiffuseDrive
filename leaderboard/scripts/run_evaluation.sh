@@ -24,6 +24,7 @@ export CHECKPOINT_ENDPOINT=results/sample_result.json # results file
 export SCENARIOS=leaderboard/data/scenarios/town05_all_scenarios.json
 export SAVE_PATH=data/eval # path for saving episodes while evaluating
 export RESUME=$False
+export RECORD_PATH=${CARLA_ROOT}/CarlaUE4/Saved
 
 python ${LEADERBOARD_ROOT}/leaderboard/leaderboard_evaluator.py \
 --scenarios=${SCENARIOS}  \
@@ -36,5 +37,5 @@ python ${LEADERBOARD_ROOT}/leaderboard/leaderboard_evaluator.py \
 --record=${RECORD_PATH} \
 --resume=${RESUME} \
 --port=${PORT} \
---trafficManagerPort=${TM_PORT}
+--trafficManagerPort=${TM_PORT} \
 
