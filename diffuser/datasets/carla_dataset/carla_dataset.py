@@ -21,6 +21,7 @@ class CarlaDatasetConfig(datasets.BuilderConfig):
             high_level_cmd_size = 6, 
             horizon = 10,
             is_valid = False,
+            using_cmd = False,
             **kwargs
         ):
         """BuilderConfig for CarlaDataset.
@@ -44,6 +45,7 @@ class CarlaDatasetConfig(datasets.BuilderConfig):
         self.name = name
         self.horizon = horizon
         self.is_valid = is_valid
+        self.using_cmd = using_cmd
 
 ## For Minxuan: path for validation dataset: extracted_diffusedrive_dataset_valid_png
 class CarlaDataset(datasets.GeneratorBasedBuilder):
@@ -76,6 +78,7 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
             waypoint_prediction_size = 8,
             high_level_cmd_size = 1, 
             is_valid = False,
+            using_cmd = False,
         ),
         CarlaDatasetConfig(
             name="waypoint_unconditioned",
@@ -86,6 +89,7 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
             waypoint_prediction_size = 8,
             high_level_cmd_size = 1,
             is_valid = False,
+            using_cmd = False,
         )
     ]
 
@@ -122,6 +126,13 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                 "actions": datasets.Sequence(datasets.Array2D(shape=(1,3), dtype=float), self.config.horizon)
             }
             ## MOD Minxuan: load bridview when using validation dataset
+            ## MOD Minxuan: add command
+            if self.config.using_cmd:
+                #past_cmd_list = [datasets.Array2D(shape=(1,1), dtype=int)] * self.config.waypoint_buffer_size
+                #features.update({"past_cmd_"+str(k):v for k,v in enumerate(past_cmd_list)})
+                #features.update({"current_cmd": datasets.Array2D(shape=(1,1), dtype="int")})
+                features.update({"cmd": datasets.Sequence(datasets.Array2D(shape=(1,1), dtype=int), self.config.waypoint_buffer_size)})
+
             if self.config.is_valid:
                 features["birdview"] = datasets.Image()
                 return datasets.DatasetInfo(
@@ -138,6 +149,11 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                 "observations": datasets.Sequence(datasets.Image(), self.config.horizon)
             }
             ## MOD Minxuan: load bridview when using validation dataset
+            ## MOD Minxuan: add cmd
+            if self.config.using_cmd:
+                #past_cmd_list = [datasets.Array2D(shape=(1,1), dtype=int)] * self.config.waypoint_buffer_size
+                features.update({"cmd": datasets.Sequence(datasets.Array2D(shape=(1,1), dtype=int), self.config.waypoint_buffer_size)})
+
             if self.config.is_valid:
                 features["birdview"] = datasets.Image()
                 return datasets.DatasetInfo(
@@ -214,6 +230,7 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
 
                     ## MOD Minxuan: for validation dataset, also consider birdview image
                     is_valid = self.config.is_valid
+                    using_cmd = self.config.using_cmd
                     if is_valid:
                         folder_path_bev = os.path.join(folder_path_current, "birdview")
                         if not os.path.isdir(folder_path_bev):
@@ -251,6 +268,10 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                         past_img, past_img_flag = self.get_past_img(file_id, folder_path_rgb_front)
                         future_img, future_img_flag = self.get_future_img(file_id, folder_path_rgb_front)
 
+                        ## MOD Minxuan: add past_cmd_list (past+current) and current_cmd
+                        if using_cmd:
+                            cmd_list, cmd_flag = self.get_cmd_list(file_path_measurements, file_id, folder_path_measurements)
+
                         if waypoint_flag * past_img_flag * future_img_flag < 1:
                             continue
                         
@@ -266,6 +287,8 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                         ## MOD Minxuan: add bev to output
                         if is_valid:
                             output["birdview"] = current_bev
+                        if using_cmd:
+                            output["cmd"] = cmd_list
                         new_name = f"{folder_name_weather}_{folder_name_route}_{file_name_no_suffix}"
                         yield new_name, output
         elif self.config.name == "waypoint_unconditioned":
@@ -285,6 +308,7 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                     
                     ## MOD Minxuan: for validation dataset, also consider birdview image
                     is_valid = self.config.is_valid
+                    using_cmd = self.config.using_cmd
                     if is_valid:
                         folder_path_bev = os.path.join(folder_path_current, "birdview")
                         if not os.path.isdir(folder_path_bev):
@@ -312,7 +336,8 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                         
                         action_list, waypoint_flag = self.get_action_list(file_path_measurements, file_id, folder_path_measurements)
                         high_level_cmd_gps = self.get_high_level_cmd_gps(file_id, folder_path_measurements)
-
+                        if using_cmd:
+                            cmd_list, cmd_flag = self.get_cmd_list(file_path_measurements, file_id, folder_path_measurements)
                         if not waypoint_flag:
                             continue
 
@@ -322,6 +347,9 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
                         ## MOD Minxuan: add bev to output
                         if is_valid:
                             output["birdview"] = current_bev
+                        if using_cmd:
+                            output["cmd"] = cmd_list
+
                         new_name = f"{folder_name_weather}_{folder_name_route}_{file_name_no_suffix}"
                         yield new_name, output
         else:
@@ -582,6 +610,49 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
         out[:, 2] = numpy.arctan2(out_front[:,1]-out[:,1], out_front[:,0] - out[:,0])
 
         return out
+
+    ## MOD Minxuan: Get current + past command
+    def get_cmd_list(self, file_path_measurements, file_id, folder_path_measurements):
+        current_json = json.load(open(file_path_measurements))
+        current_cmd = numpy.array([current_json["command"]])
+
+        past_cmd, past_cmd_flag = self.get_past_cmd(file_id, folder_path_measurements)
+        future_cmd, future_cmd_flag = self.get_future_cmd(file_id, folder_path_measurements)
+
+        if future_cmd_flag * past_cmd_flag < 1:
+            return None, False
+
+        cmd_list = []
+        for i in reversed(past_cmd):
+            cmd_list.append(i[0])
+        cmd_list.append(current_cmd)
+        return cmd_list, True
+
+    def get_past_cmd(self, file_id, folder_path):
+        past_cmd = [None] * self.config.waypoint_buffer_size
+        for t in range(self.config.waypoint_buffer_size):
+            prev_file_id = file_id - t - 1
+            prev_file_path_measurements = os.path.join(folder_path, str(prev_file_id).zfill(4) + ".json")
+
+            if not os.path.exists(prev_file_path_measurements):
+                return past_cmd, False
+            
+            prev_json = json.load(open(prev_file_path_measurements))
+            past_cmd[t] = numpy.array([prev_json["command"]]).reshape((1,1))
+        return past_cmd, True
+    
+    def get_future_cmd(self, file_id, folder_path):
+        future_cmd = [None] * self.config.waypoint_prediction_size
+        for t in range(self.config.waypoint_prediction_size):
+            next_file_id = file_id + t + 1
+            next_file_path_measurements = os.path.join(folder_path, str(next_file_id).zfill(4) + ".json")
+
+            if not os.path.exists(next_file_path_measurements):
+                return future_cmd, False
+            next_json = json.load(open(next_file_path_measurements))
+            future_cmd[t] = numpy.array([next_json["command"]]).reshape((1,1))
+
+        return future_cmd, True
 
 if __name__ == '__main__':
     data_set = load_dataset("/scratch_net/biwidl216/rl_course_14/project/our_approach/decision-diffuser/code/diffuser/datasets/carla_dataset", "decdiff", streaming=True, split="train")
