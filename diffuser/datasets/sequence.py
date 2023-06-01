@@ -21,10 +21,10 @@ ValueBatch = namedtuple('ValueBatch', 'trajectories conditions values')
 ValidBatch = namedtuple('ValidBatch', 'trajectories conditions birdview')
 ValidImageBatch = namedtuple('ValidImageBatch', 'trajectories conditions images birdview')
 # MOD Minxuan: add cmd for validation & training dataset with/without cmd
-CmdBatch = namedtuple('CmdValueBatch', 'trajectories conditions cmds')
-CmdImageBatch = namedtuple('CmdImageBatch', 'trajevtories conditions images cmds')
-ValidCmdBatch = namedtuple('ValidCmdValueBatch', 'trajectories conditions cmds birdview')
-ValidCmdImageBatch = namedtuple('ValidCmdImageBatch', 'trajevtories conditions cmds images birdview')
+CmdBatch = namedtuple('CmdValueBatch', 'trajectories conditions cmd')
+CmdImageBatch = namedtuple('CmdImageBatch', 'trajectories conditions images cmd')
+ValidCmdBatch = namedtuple('ValidCmdValueBatch', 'trajectories conditions cmd birdview')
+ValidCmdImageBatch = namedtuple('ValidCmdImageBatch', 'trajectories conditions images cmd birdview')
 
 class SequenceDataset(torch.utils.data.Dataset):
 
@@ -397,7 +397,10 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
             if self.using_cmd:
                 ## after squeeze shape: (4,1)
                 cmd = i["cmd"]
-                cmd = np.array(cmd).squeeze(0)
+                cmd = np.array(cmd).reshape(4)
+                # cmd have values from 1 to 6, we need to convert it to one hot encoding
+                cmd = torch.nn.functional.one_hot(torch.from_numpy(cmd - 1), num_classes=6)
+                cmd = cmd.numpy()
             # filter out the trajectories where the car is not moving, i.e. the maximum values in the horizon (future or past) are close to 0
             if np.absolute(trajectories[:,:-1]).max() <= 1e-6:
                 continue
@@ -426,18 +429,19 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
                     ## MOD Minxuan: add option for validation dataset, both for conditioning & unconditioning
                     if self.is_valid:
                         if self.using_cmd:
-                            batch = ValidCmdImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), cmd.astype(int), image.astype(np.float32), np.asarray(bev_img[0]))
+                            # breakpoint()
+                            batch = ValidCmdImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32), cmd.astype(int), np.asarray(bev_img[0]))
                         else:
                             batch = ValidImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32), np.asarray(bev_img[0]))
                     else:
                         if self.using_cmd:
-                            batch = CmdImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), cmd.astype(int), image.astype(np.float32))
+                            batch = CmdImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32),  image.astype(np.float32), cmd.astype(int),)
                         else:
                             batch = ImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32))
                 else:
                     if self.is_valid:
                         if self.using_cmd:
-                            batch = ValidCmdBatch(trajectories.astype(np.float32), conditions.astype(np.float32), cmd.astype(int), np.asarray(bev_img[0]))
+                            batch = ValidCmdBatch(trajectories.astype(np.float32), conditions.astype(np.float32), np.asarray(bev_img[0]), cmd.astype(int))
                         else:
                             batch = ValidBatch(trajectories.astype(np.float32), conditions.astype(np.float32), np.asarray(bev_img[0]))
                     else:

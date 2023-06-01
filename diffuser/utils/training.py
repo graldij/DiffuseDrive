@@ -162,7 +162,7 @@ class Trainer(object):
                 # if conditioning on past images is True, then need to normalize the images
                 if self.model.model.past_image_cond:
                     normalized_batch = self.images_batch_norm(batch.images)
-                    new_batch = (batch.trajectories, batch.conditions, normalized_batch)
+                    new_batch = (batch.trajectories, batch.conditions, normalized_batch, batch.cmd) if self.model.model.using_cmd else (batch.trajectories, batch.conditions, normalized_batch)
                     batch = new_batch
                 loss, infos = self.model.loss(*batch)
                 loss = loss / self.gradient_accumulate_every
@@ -307,9 +307,19 @@ class Trainer(object):
                 
                 images = to_device(images, self.device)
                 images = einops.repeat(images, 'b t h w d -> (repeat b) t h w d', repeat = n_samples)
-                samples = self.ema_model.conditional_sample(conditions, images=images)
+                if self.ema_model.model.using_cmd:
+                    commands = batch.cmd
+                    commands = to_device(commands, self.device)
+                    samples = self.ema_model.conditional_sample(conditions, images=images, cmd = commands)
+                else:
+                    samples = self.ema_model.conditional_sample(conditions, images=images, cmd = None)
             else:
-                samples = self.ema_model.conditional_sample(conditions, images=None)
+                if self.ema_model.model.using_cmd:
+                    commands = batch.cmd
+                    commands = to_device(commands, self.device)
+                    samples = self.ema_model.conditional_sample(conditions, images=None, cmd = commands)
+                else:
+                    samples = self.ema_model.conditional_sample(conditions, images=None, cmd = None)
 
             samples = to_np(samples)
 
@@ -365,9 +375,9 @@ class Trainer(object):
             # speed up 5x the visualization
             batch = self.dataloader_vis.__next__()
             batch = self.dataloader_vis.__next__()
-            batch = self.dataloader_vis.__next__()
-            batch = self.dataloader_vis.__next__()
-            batch = self.dataloader_vis.__next__()
+            # batch = self.dataloader_vis.__next__()
+            # batch = self.dataloader_vis.__next__()
+            # batch = self.dataloader_vis.__next__()
             
             trajectories = to_device(batch.trajectories, self.device)
             conditions = to_device(batch.conditions, self.device)
@@ -380,9 +390,21 @@ class Trainer(object):
                 
                 images = to_device(images, self.device)
                 images = einops.repeat(images, 'b t h w d -> (repeat b) t h w d', repeat = n_samples)
-                samples = self.ema_model.conditional_sample(conditions, images=images)
+                if self.ema_model.model.using_cmd:
+                    commands = batch.cmd
+                    commands = to_device(commands, self.device)
+                    commands = einops.repeat(commands, 'b t h  -> (repeat b) t h ', repeat = n_samples)
+                    samples = self.ema_model.conditional_sample(conditions, images=images, cmd = commands)
+                else:
+                    samples = self.ema_model.conditional_sample(conditions, images=images, cmd = None)
             else:
-                samples = self.ema_model.conditional_sample(conditions, images=None)
+                if self.ema_model.model.using_cmd:
+                    commands = batch.cmd
+                    commands = to_device(commands, self.device)
+                    commands = einops.repeat(commands, 'b t h  -> (repeat b) t h ', repeat = n_samples)
+                    samples = self.ema_model.conditional_sample(conditions, images=None, cmd = commands)
+                else:
+                    samples = self.ema_model.conditional_sample(conditions, images=None, cmd = None)
 
             samples = to_np(samples)
 
