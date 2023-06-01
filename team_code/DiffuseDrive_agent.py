@@ -640,6 +640,7 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
                 pred_waypoints = self.diffusedrive2carla_data(diffused_waypoints)
                 # TODO Marcus: not sure if this is needed
                 pred_waypoints = pred_waypoints[0]
+                # print(pred_waypoints)
             else:
                 pred_waypoints = self.past_pred_waypoints
             
@@ -650,7 +651,7 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
 
 
         # call the controller to compute the control out of the predicted waypoints
-        steer, throttle, brake, meta_infos = self.controller.run_step(velocity, pred_waypoints)
+        steer, throttle, brake, meta_infos = self.controller.run_step(velocity, [pred_waypoints[0], pred_waypoints[4]])
 
         # TODO Jacopo: to check if this is needed.
         if brake < 0.05:
@@ -703,7 +704,8 @@ class DiffuseDriveAgent(autonomous_agent.AutonomousAgent):
         # Not used, only for visualization of interfuser
         # surface = self._hic.run_interface(tick_data)
         # tick_data["surface"] = surface
-
+        
+        # print(throttle)
         if SAVE_PATH is not None:
             self.save(tick_data)
         return control
