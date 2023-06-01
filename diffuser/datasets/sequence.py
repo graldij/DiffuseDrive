@@ -392,6 +392,13 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
             if np.absolute(trajectories[:,:-1]).max() <= 1e-6:
                 continue
             else:
+                # if the car is not turning, we keep the sample with probability 0.1 and discard it with probability 0.9. 
+                # Car is not turning if the max value of the x direction is less than 10/5 (/5 coming from the normalization and visualization with bev)
+                if np.absolute(trajectories[:,0]).max() <= 10/5:
+                    # generate a random boolean variable with probability of beging true of 0.1
+                    keep_sample = np.random.choice([True, False], p=[0.01, 0.99])
+                    if not keep_sample:
+                        continue
                 # Normalize waypoints
                 traj_mean, traj_std = self.get_mean_std_waypoints()
                 trajectories = (trajectories - traj_mean)/(traj_std + 1e-7)
