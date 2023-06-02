@@ -374,6 +374,14 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
             raise NotImplementedError
         
         return traj_mean, traj_std
+
+    def preprocess_cmd(self, input_cmd):
+        cmd = input_cmd
+        cmd = np.array(cmd).reshape(4)
+        # cmd have values from 1 to 6, we need to convert it to one hot encoding
+        cmd = torch.nn.functional.one_hot(torch.from_numpy(cmd - 1), num_classes=6)
+        cmd = cmd.numpy()
+        return cmd
         
         
 
@@ -396,11 +404,8 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
                 bev_img = i["birdview"]
             if self.using_cmd:
                 ## after squeeze shape: (4,1)
-                cmd = i["cmd"]
-                cmd = np.array(cmd).reshape(4)
-                # cmd have values from 1 to 6, we need to convert it to one hot encoding
-                cmd = torch.nn.functional.one_hot(torch.from_numpy(cmd - 1), num_classes=6)
-                cmd = cmd.numpy()
+                cmd = self.preprocess_cmd(i["cmd"])
+
             # filter out the trajectories where the car is not moving, i.e. the maximum values in the horizon (future or past) are close to 0
             if np.absolute(trajectories[:,:-1]).max() <= 1e-6:
                 continue
