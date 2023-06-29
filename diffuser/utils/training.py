@@ -238,7 +238,7 @@ class Trainer(object):
         torch.save(data, savepath)
         logger.info(f'[ utils/training ] Saved model to {savepath}')
 
-    def load(self):
+    def load(self, loadpath=None):
         '''
             loads model and ema from disk
         '''
@@ -366,7 +366,7 @@ class Trainer(object):
             MOD Minxuan: Here I assume following:
             bev image is from the batch called batch.birdview
             we take two samples from the diffusion model
-            The ground truth is in purple, two samples in red and yellow
+            The ground truth is in purple, random sample color for the sampled waypoints
         '''
         for i in range(batch_size):
 
@@ -375,9 +375,14 @@ class Trainer(object):
             # speed up 5x the visualization
             batch = self.dataloader_vis.__next__()
             batch = self.dataloader_vis.__next__()
-            # batch = self.dataloader_vis.__next__()
-            # batch = self.dataloader_vis.__next__()
-            # batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
+            batch = self.dataloader_vis.__next__()
             
             trajectories = to_device(batch.trajectories, self.device)
             conditions = to_device(batch.conditions, self.device)
@@ -433,12 +438,11 @@ class Trainer(object):
             img = img.resize((500,500))
             ax.imshow(img, extent=[0,500,0,500])
             
-            colors = ['r', 'y']
             ## scale for coloring
             length = true_trajectories.shape[1]*2
 
             for sample_pose in sampled_poses:
-                c = colors.pop()
+                c = np.random.rand(3,)
                 for j, poses in enumerate(sample_pose):
                     dx = np.cos(poses[-1]-np.pi/2)/5
                     dy = np.sin(poses[-1]-np.pi/2)/5
@@ -469,7 +473,10 @@ class Trainer(object):
             ## save plot
             if not os.path.exists('visualize_bev/'+ self.wandb_run.id):
                 os.makedirs('visualize_bev/'+ self.wandb_run.id)
-            new_file_name = 'visualize_bev/'+ self.wandb_run.id +  '/result'+str(self.step) +"b" + str(i) +'.pdf'
+            if self.ema_model.model.using_cmd:
+                new_file_name = 'visualize_bev/'+ self.wandb_run.id +  '/result'+str(self.step) +"b" + str(i) + "cmd" + str(int(batch.cmd[0][3].argmax())) + '.png'
+            else:
+                new_file_name = 'visualize_bev/'+ self.wandb_run.id +  '/result'+str(self.step) +"b" + str(i) + '.png'
             plt.savefig(new_file_name)
             
             print("saved visualization", new_file_name)

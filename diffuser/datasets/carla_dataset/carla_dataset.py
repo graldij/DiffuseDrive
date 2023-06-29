@@ -54,13 +54,13 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
         CarlaDatasetConfig(
             name="unconditioned",
             description="Image only datas for unconditioned diffusion",
-            base_dir="/scratch_net/biwidl310/rl_course_18/extracted_diffusedrive_dataset_valid_png",
+            base_dir="/scratch_net/biwidl216/rl_course_14/preprocessed_extracted_diffusedrive_dataset",
             img_buffer_size = 0
         ),
         CarlaDatasetConfig(
             name="waypoint_imageConditioned",
             description="Data for imaged conditioned waypoint diffusion",
-            base_dir="/scratch_net/biwidl310/rl_course_18/extracted_diffusedrive_dataset_valid_png",
+            base_dir="/scratch_net/biwidl216/rl_course_14/preprocessed_extracted_diffusedrive_dataset",
             img_buffer_size = 4,
             waypoint_buffer_size = 4,
             waypoint_prediction_size = 6,
@@ -70,7 +70,7 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
         CarlaDatasetConfig(
             name="decdiff",
             description="format for decdiff trainer",
-            base_dir="/scratch_net/biwidl310/rl_course_18/extracted_diffusedrive_dataset_valid_png",
+            base_dir="/scratch_net/biwidl216/rl_course_14/preprocessed_extracted_diffusedrive_dataset",
             horizon = 12,
             img_buffer_size = 3,
             img_future_size = 0,
@@ -83,7 +83,7 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
         CarlaDatasetConfig(
             name="waypoint_unconditioned",
             description="format for decdiff trainer",
-            base_dir="/scratch_net/biwidl310/rl_course_18/extracted_diffusedrive_dataset_valid_png",
+            base_dir="/scratch_net/biwidl216/rl_course_14/preprocessed_extracted_diffusedrive_dataset",
             horizon = 12,
             waypoint_buffer_size = 3,
             waypoint_prediction_size = 8,

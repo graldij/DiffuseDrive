@@ -5,8 +5,8 @@ from PIL import Image
 from torchvision import transforms
 import numpy as np
 
-original_dir = "/scratch_net/biwidl310/rl_course_18/extracted_dataset"
-new_dir = "/scratch_net/biwidl310/rl_course_18/extracted_diffusedrive_dataset_validation"
+original_dir = "/scratch_net/biwidl216/rl_course_14/extracted_dataset"
+new_dir = "/scratch_net/biwidl216/rl_course_14/preprocessed_extracted_diffusedrive_dataset"
 
 
 def create_folder(new_folder_path):

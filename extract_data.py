@@ -2,7 +2,7 @@ import os
 import shutil
 
 original_dir = "/srv/beegfs02/scratch/rl_course/data/proj-diffuse-drive/dataset"
-new_dir = "/scratch_net/biwidl310/rl_course_18/extracted_dataset"
+new_dir = "/scratch_net/biwidl216/rl_course_14/extracted_dataset"
 
 
 def create_folder(new_folder_path):
