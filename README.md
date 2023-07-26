@@ -1,4 +1,4 @@
-`# DiffuseDrive 
+# DiffuseDrive 
 #### Robot Learning Course - Spring Semester 2023, ETH Zurich
 ### Minxuan Qin, Marcus Leong, Jacopo Graldi
 ---
