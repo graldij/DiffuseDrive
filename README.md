@@ -1,4 +1,4 @@
-# DiffuseDrive 
+`# DiffuseDrive 
 #### Robot Learning Course - Spring Semester 2023, ETH Zurich
 ### Minxuan Qin, Marcus Leong, Jacopo Graldi
 ---
@@ -8,6 +8,7 @@
 * To run the training routine, run ```scripts/train.py``` with Python 3.8 or above.
 * Configuration of training is in ```config/carla.py```
 * To evaluate the model after training, run the script ```leaderboard/scripts/run_evaluation.sh```
+* We provide a trained checkpoint of the model (as described in the report) TODO
 
 ## Further Comments
 * Our repository is based on the [Decision Diffuser](https://github.com/anuragajay/decision-diffuser/tree/main/code). 
