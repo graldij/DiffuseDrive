@@ -8,12 +8,16 @@ import torch
 from torchvision import transforms
 import time
 
+base_dir = "/scratch_net/biwidl211/rl_course_10/diffuse_drive_datasets/preprocessed_train_data"
+eval_dir = "/scratch_net/biwidl211/rl_course_10/diffuse_drive_datasets/preprocessed_eval_data"
+
 class CarlaDatasetConfig(datasets.BuilderConfig):
     def __init__(
             self, 
             name, 
             description, 
             base_dir, 
+            eval_dir = "/scratch_net/biwidl211/rl_course_10/diffuse_drive_datasets/preprocessed_eval_data",
             img_buffer_size = 3, 
             waypoint_buffer_size = 3, 
             waypoint_prediction_size = 6, 
@@ -37,6 +41,7 @@ class CarlaDatasetConfig(datasets.BuilderConfig):
         """
         super(CarlaDatasetConfig, self).__init__(version=datasets.Version("1.0.0"), **kwargs)
         self.base_dir = base_dir
+        self.eval_dir = eval_dir
         self.img_buffer_size = img_buffer_size
         self.img_future_size = img_future_size
         self.waypoint_buffer_size = waypoint_buffer_size
@@ -54,13 +59,13 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
         CarlaDatasetConfig(
             name="unconditioned",
             description="Image only datas for unconditioned diffusion",
-            base_dir="/scratch_net/biwidl216/rl_course_14/preprocessed_extracted_diffusedrive_dataset",
+            base_dir=base_dir,
             img_buffer_size = 0
         ),
         CarlaDatasetConfig(
             name="waypoint_imageConditioned",
             description="Data for imaged conditioned waypoint diffusion",
-            base_dir="/scratch_net/biwidl216/rl_course_14/preprocessed_extracted_diffusedrive_dataset",
+            base_dir=base_dir,
             img_buffer_size = 4,
             waypoint_buffer_size = 4,
             waypoint_prediction_size = 6,
@@ -70,7 +75,7 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
         CarlaDatasetConfig(
             name="decdiff",
             description="format for decdiff trainer",
-            base_dir="/scratch_net/biwidl216/rl_course_14/preprocessed_extracted_diffusedrive_dataset",
+            base_dir=base_dir,
             horizon = 12,
             img_buffer_size = 3,
             img_future_size = 0,
@@ -78,12 +83,12 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
             waypoint_prediction_size = 8,
             high_level_cmd_size = 1, 
             is_valid = False,
-            using_cmd = False,
+            using_cmd = True,
         ),
         CarlaDatasetConfig(
             name="waypoint_unconditioned",
             description="format for decdiff trainer",
-            base_dir="/scratch_net/biwidl216/rl_course_14/preprocessed_extracted_diffusedrive_dataset",
+            base_dir=base_dir,
             horizon = 12,
             waypoint_buffer_size = 3,
             waypoint_prediction_size = 8,
@@ -171,7 +176,11 @@ class CarlaDataset(datasets.GeneratorBasedBuilder):
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
                 gen_kwargs={"base_dir": self.config.base_dir},
-            )
+            ),
+            datasets.SplitGenerator(
+                name=datasets.Split.VALIDATION, 
+                gen_kwargs={"base_dir": self.config.eval_dir}
+            ),
         ]
        
 

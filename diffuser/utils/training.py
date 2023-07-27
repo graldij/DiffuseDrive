@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from torchvision import transforms
 import random
 from PIL import Image
+import pandas as pd
 
 def cycle(dl):
     while True:
@@ -102,7 +103,7 @@ class Trainer(object):
 
         # Shuffling is handled by sequence.py with the flag "is_valid". Here everythin should be set to shuffle = False
         self.dataloader = cycle(torch.utils.data.DataLoader(
-            self.dataset, batch_size=train_batch_size, num_workers=0, pin_memory=True, shuffle=False
+            self.dataset, batch_size=train_batch_size, num_workers=8, pin_memory=True, shuffle=False
         ))
         self.dataloader_vis = cycle(torch.utils.data.DataLoader(
             self.valid_dataset, batch_size=1, num_workers=0, pin_memory=True
@@ -186,7 +187,10 @@ class Trainer(object):
                 metrics['loss'] = loss.detach().item()
 
                 if self.wandb_run is not None:
-                    self.wandb_run.log({**metrics, 'train/step': self.step, 'train/lr': self.scheduler.get_last_lr()[0]})
+                    if self.sample_freq and self.step % self.sample_freq != 0:
+                        self.wandb_run.log({**metrics, 'train/step': self.step, 'train/lr': self.scheduler.get_last_lr()[0]})
+                    else:
+                        self.wandb_run.log({**metrics, 'train/step': self.step, 'train/lr': self.scheduler.get_last_lr()[0]}, commit=False)
             
             # if self.step == 0 and self.sample_freq:
                 # continue
@@ -206,7 +210,7 @@ class Trainer(object):
                     # self.render_samples()
                     # sample and visualize with bird-eye-view
                     self.visualize_bev()
-                    
+                    # Add evaluation accuracy
                     
             # step scheduler for lr decay
             self.scheduler.step()
@@ -361,13 +365,15 @@ class Trainer(object):
             print("saved image", new_file_name)
             ax.cla()
 
-    def visualize_bev(self, batch_size=2, n_samples=2):
+    def visualize_bev(self, batch_size=2, n_samples=2, save_data=False):
         '''
             MOD Minxuan: Here I assume following:
             bev image is from the batch called batch.birdview
             we take two samples from the diffusion model
             The ground truth is in purple, random sample color for the sampled waypoints
         '''
+        traj_mean, traj_std = self.dataset.get_mean_std_waypoints()
+        l2_dist = [0] * traj_mean.shape[0]
         for i in range(batch_size):
 
             ## get a single datapoint
@@ -418,11 +424,22 @@ class Trainer(object):
             
             # TODO Jacopo improve this
             # de-normalize observations
+            traj_min, traj_max = self.dataset.get_min_max_waypoints()
+            # sampled_poses = 0.5* (normed_observations+1.0) * (traj_max-traj_min) + traj_min 
+            # true_trajectories = 0.5* (batch.trajectories+1.0) * (traj_max-traj_min) + traj_min 
+            sampled_poses = normed_observations
+            true_trajectories = batch.trajectories
+
             traj_mean, traj_std = self.dataset.get_mean_std_waypoints()
-            sampled_poses = normed_observations * (traj_std + 1e-7) + traj_mean
-            true_trajectories = batch.trajectories * (traj_std + 1e-7) + traj_mean
+            sampled_poses = sampled_poses * (traj_std + 1e-7) + traj_mean
+            true_trajectories = true_trajectories * (traj_std + 1e-7) + traj_mean
 
-
+            print(batch.trajectories)
+            
+            for j, observation in enumerate(normed_observations):
+                print(observation)
+                for k, waypoint in enumerate(observation):
+                    l2_dist[k] += np.linalg.norm(waypoint - np.array(batch.trajectories[0][k]))
             # TODO might add a check if the birdview exists
             
             fig, ax = plt.subplots()
@@ -440,7 +457,6 @@ class Trainer(object):
             
             ## scale for coloring
             length = true_trajectories.shape[1]*2
-
             for sample_pose in sampled_poses:
                 c = np.random.rand(3,)
                 for j, poses in enumerate(sample_pose):
@@ -481,7 +497,36 @@ class Trainer(object):
             
             print("saved visualization", new_file_name)
             ax.cla()
-            
+
+            ## save data as csv file
+            if save_data:
+                col_name = []
+                full_data = []
+                row_data = np.array([])
+                for time_step in range(batch.trajectories.shape[1]):
+                    col_name.append('x%i' %time_step)
+                    col_name.append('y%i' %time_step)
+                    col_name.append('t%i' %time_step)
+                    row_data = np.append(row_data, np.array(np.array(batch.trajectories[0][time_step])))
+                full_data.append(row_data)
+
+                for j, observation in enumerate(normed_observations):
+                    row_data = np.array([])
+                    for k, waypoint in enumerate(observation):
+                        row_data = np.append(row_data, waypoint)
+                    full_data.append(row_data)
+                df = pd.DataFrame(i for i in full_data)
+                df.columns = col_name
+                df.to_csv('visualize_bev/' + self.wandb_run.id + '/result' + str(self.step) + "b" + str(i) + '.csv')
+
+
+
+        for t,dist in enumerate(l2_dist):
+            dist = dist / (batch_size * n_samples)
+            if t < len(l2_dist) - 1:
+                self.wandb_run.log({'eval/dist'+str(t): dist}, commit=False)
+            else:
+                self.wandb_run.log({'eval/dist'+str(t): dist})
             
 
     def inv_render_samples(self, batch_size=2, n_samples=2):

@@ -975,10 +975,10 @@ class GaussianInvDynDiffusionCarla(nn.Module):
         t = t.detach().to(torch.int64)
         x_recon = self.predict_start_from_noise(x, t=t, noise=epsilon)
 
-        if self.clip_denoised:
-            x_recon.clamp_(-1., 1.)
-        else:
-            assert RuntimeError()
+        # if self.clip_denoised:
+        #     x_recon.clamp_(-1., 1.)
+        # else:
+        #     assert RuntimeError()
 
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(
                 x_start=x_recon, x_t=x, t=t)
