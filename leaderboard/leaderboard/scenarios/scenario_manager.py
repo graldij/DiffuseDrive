@@ -26,6 +26,11 @@ from leaderboard.autoagents.agent_wrapper import AgentWrapper, AgentError
 from leaderboard.envs.sensor_interface import SensorReceivedNoData
 from leaderboard.utils.result_writer import ResultOutputProvider
 
+from carla_birdeye_view import BirdViewProducer, BirdViewCropType, PixelDimensions
+import matplotlib.pyplot as plt
+from PIL import Image
+import numpy as np
+import os
 
 class ScenarioManager(object):
 
@@ -75,6 +80,10 @@ class ScenarioManager(object):
         self.end_system_time = None
         self.end_game_time = None
 
+        # save sampled trajectory period
+        self.save_traj_period = 2.0
+        self.last_save_traj_time = 0.0
+
         # Register the scenario tick as callback for the CARLA world
         # Use the callback_id inside the signal handler to allow external interrupts
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -92,6 +101,7 @@ class ScenarioManager(object):
         self._timestamp_last_run = 0.0
         self.scenario_duration_system = 0.0
         self.scenario_duration_game = 0.0
+        self.last_save_traj_time = 0.0
         self.start_system_time = None
         self.end_system_time = None
         self.end_game_time = None
@@ -114,6 +124,14 @@ class ScenarioManager(object):
         # py_trees.display.render_dot_tree(self.scenario_tree)
 
         self._agent.setup_sensors(self.ego_vehicles[0], self._debug_mode)
+
+        # Create birdeye view generator
+        self.birdview_producer = BirdViewProducer(
+            CarlaDataProvider.get_client(),  # carla.Client
+            target_size=PixelDimensions(width=400, height=400),
+            pixels_per_meter=4,
+            crop_type=BirdViewCropType.FRONT_AND_REAR_AREA,
+        )
 
     def run_scenario(self):
         """
@@ -148,6 +166,7 @@ class ScenarioManager(object):
             GameTime.on_carla_tick(timestamp)
             CarlaDataProvider.on_carla_tick()
 
+            self.birdview = BirdViewProducer.as_rgb(self.birdview_producer.produce(agent_vehicle=self.ego_vehicles[0]))
             try:
                 ego_action = self._agent()
 
@@ -159,7 +178,11 @@ class ScenarioManager(object):
                 raise AgentError(e)
 
             self.ego_vehicles[0].apply_control(ego_action)
-
+            # self._agent is agent_wrapper, self._agent._agent is DiffuseDrive_agent
+            # breakpoint()
+            if(GameTime.get_time() - self.last_save_traj_time > self.save_traj_period):
+                self.save_trajectory(self.birdview, self._agent._agent.get_past_pred_waypoints(), self._agent._agent.get_past_command()[-1])
+                self.last_save_traj_time = GameTime.get_time()
             # Tick scenario
             self.scenario_tree.tick_once()
 
@@ -223,3 +246,39 @@ class ScenarioManager(object):
             global_result = '\033[91m'+'FAILURE'+'\033[0m'
 
         ResultOutputProvider(self, global_result)
+
+    def save_trajectory(self, bev_image, trajectory, command):
+        fig, ax = plt.subplots()
+        ## plot bev image, hardcode it into 500*500
+        plt.rcParams["figure.figsize"] = (6,6)
+        margin_max = 400 
+        margin_min = 0 
+        ax.set_xlim(margin_min, margin_max)
+        ax.set_ylim(margin_min, margin_max)
+        img = Image.fromarray(bev_image, 'RGB')
+        img = img.transpose(Image.FLIP_TOP_BOTTOM)
+        img = img.resize((500,500))
+        ax.imshow(img, extent=[0,500,0,500])
+
+        c = np.random.rand(3,)
+        length = trajectory.shape[0]*2
+        for j, poses in enumerate(trajectory):
+            dx = np.cos(poses[-1]-np.pi/2)/5
+            dy = np.sin(poses[-1]-np.pi/2)/5
+            
+            #waypoint = np.around(poses*5+20*10).astype(int)
+            # Hardcode it, scale=5
+            waypoint = poses*5+250
+            ax.scatter(waypoint[0], waypoint[1],s=10, color=c, alpha=0.5+j/length)
+            # does not include past waypoints
+            if j == 7:
+                ax.arrow(waypoint[0], waypoint[1], dx, dy, head_width=7, color='blue',alpha=0.5+j/length)
+            ## c represents current, should overlapping of all trajectories
+            if j== 0:
+                ax.text(waypoint[0]-0.05, waypoint[1]+0.05, "c", fontsize=10)
+
+        if not os.path.exists('visualize_bev/'+ 'test_run_noimage'):
+            os.makedirs('visualize_bev/'+ 'test_run_noimage')
+        new_file_name = 'visualize_bev/'+ 'test_run_noimage' +  '/result' + 't' + str(GameTime.get_time() - self.start_game_time) + "cmd" + str(command) + '.png'
+        plt.savefig(new_file_name)
+        ax.cla()

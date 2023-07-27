@@ -265,17 +265,23 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
         self.past_image_cond = past_image_cond
         self.waypoints_normalization = waypoints_normalization
         
-        if past_image_cond:
-            self.dataset = load_dataset("diffuser/datasets/carla_dataset", "decdiff", is_valid = is_valid, using_cmd = using_cmd, streaming=True, split="train")
+        if past_image_cond or using_cmd:
+            if is_valid:
+                self.dataset = load_dataset("diffuser/datasets/carla_dataset", "decdiff", is_valid = is_valid, using_cmd = using_cmd, streaming=True, split="validation")
+            else:
+                self.dataset = load_dataset("diffuser/datasets/carla_dataset", "decdiff", is_valid = is_valid, using_cmd = using_cmd, streaming=True, split="train")
         else:
-            self.dataset = load_dataset("diffuser/datasets/carla_dataset", "waypoint_unconditioned", is_valid = is_valid, using_cmd = using_cmd, streaming=True, split="train")
+            if is_valid:
+                self.dataset = load_dataset("diffuser/datasets/carla_dataset", "waypoint_unconditioned", is_valid = is_valid, using_cmd = using_cmd, streaming=True, split="validation")
+            else:
+                self.dataset = load_dataset("diffuser/datasets/carla_dataset", "waypoint_unconditioned", is_valid = is_valid, using_cmd = using_cmd, streaming=True, split="train")
         
         ## MOD Minxuan, add is_valid, using_cmd
         self.is_valid = is_valid
         self.using_cmd = using_cmd
         ## not shuffle for validation set, perhaps could be comment
         if not self.is_valid:
-            self.dataset.shuffle(seed=42, buffer_size=50)
+            self.dataset.shuffle(seed=42, buffer_size=5000)
         self.img_size = 128
         self.preprocess = transforms.Compose([
             transforms.Resize((self.img_size,self.img_size)),
@@ -375,6 +381,37 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
         
         return traj_mean, traj_std
 
+    def get_min_max_waypoints(self):
+        traj_min = np.array([
+            [-12.777718544006348, -4.950850963592529, -1.3317021131515503],
+            [-11.355544090270996, -3.6506099700927734, -1.1804558038711548],
+            [-10.180001258850098, -1.9109903573989868, -1.114801049232483],
+            [0.0, 0.0, 0.0],
+            [-7.880988597869873, -3.6756961345672607, -0.7560252547264099],
+            [-6.771267414093018, -7.230514049530029, -0.8751782774925232],
+            [-5.186681270599365, -10.697504997253418, -1.253611445426941],
+            [-6.616140842437744, -14.201983451843262, -1.5877898931503296],
+            [-9.170953750610352, -17.728538513183594, -1.7906367778778076],
+            [-12.158693313598633, -21.23335075378418, -1.9742891788482666],
+            [-15.141814231872559, -24.260025024414062, -2.0636560916900635],
+            [-18.29128074645996, -26.911006927490234, -2.136150598526001]
+        ])
+        traj_max = np.array([
+            [8.759147644042969, 35.54775619506836, 1.209356665611267],
+            [6.951714038848877, 32.29971694946289, 0.8751782774925232],
+            [5.017969131469727, 29.1019287109375, 0.7351927161216736],
+            [0.0, 0.0, 0.0],
+            [4.7320637702941895, 22.659664154052734, 0.894292950630188],
+            [4.016613006591797, 19.49294090270996, 1.0876435041427612],
+            [4.688262939453125, 16.254961013793945, 1.3317021131515503],
+            [6.8884053230285645, 13.051817893981934, 1.6268566846847534],
+            [9.62071704864502, 9.772242546081543, 1.9042112827301025],
+            [12.110074043273926, 6.572741985321045, 2.0783979892730713],
+            [14.606707572937012, 3.3091931343078613, 2.2460124492645264],
+            [17.729951858520508, 0.625424325466156, 2.319577932357788]
+        ])
+        return traj_min, traj_max
+
     def preprocess_cmd(self, input_cmd):
         cmd = input_cmd
         cmd = np.array(cmd).reshape(4)
@@ -402,24 +439,32 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
             ## MOD Minxuan: add birdview for validation dataset
             if self.is_valid:
                 bev_img = i["birdview"]
+            
             if self.using_cmd:
                 ## after squeeze shape: (4,1)
                 cmd = self.preprocess_cmd(i["cmd"])
 
             # filter out the trajectories where the car is not moving, i.e. the maximum values in the horizon (future or past) are close to 0
-            if np.absolute(trajectories[:,:-1]).max() <= 1e-6:
+            # if np.absolute(trajectories[:,:-1]).max() <= 1e-6:
+            if False:
                 continue
             else:
                 # if the car is not turning, we keep the sample with probability 0.1 and discard it with probability 0.9. 
                 # Car is not turning if the max value of the x direction is less than 10/5 (/5 coming from the normalization and visualization with bev)
+
                 if np.absolute(trajectories[:,0]).max() <= 10/5:
                     # generate a random boolean variable with probability of beging true of 0.1
-                    keep_sample = np.random.choice([True, False], p=[0.01, 0.99])
+                    keep_sample = np.random.choice([True, False], p=[0.5, 0.5])
                     if not keep_sample:
                         continue
+            
                 # Normalize waypoints
+                if trajectories.shape[0] < 12:
+                    continue
                 traj_mean, traj_std = self.get_mean_std_waypoints()
                 trajectories = (trajectories - traj_mean)/(traj_std + 1e-7)
+                # traj_min, traj_max = self.get_min_max_waypoints()
+                # trajectories = 2 * (trajectories - traj_min)/ (traj_max - traj_min + 1e-7) - 1.0
                 
                 conditions = trajectories[:4, :].copy()
                 
@@ -432,12 +477,13 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
                     
                     ## MOD Minxuan: add cmd
                     ## MOD Minxuan: add option for validation dataset, both for conditioning & unconditioning
+                    ## MOD Marcus: add np.asarray(0) to unused conditions, as the batch is loaded based on the argument position
                     if self.is_valid:
                         if self.using_cmd:
                             # breakpoint()
                             batch = ValidCmdImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32), cmd.astype(int), np.asarray(bev_img[0]))
                         else:
-                            batch = ValidImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32), np.asarray(bev_img[0]))
+                            batch = ValidCmdImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), image.astype(np.float32), np.asarray(0), np.asarray(bev_img[0]))
                     else:
                         if self.using_cmd:
                             batch = CmdImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32),  image.astype(np.float32), cmd.astype(int),)
@@ -446,12 +492,12 @@ class CollectedSequenceDataset(torch.utils.data.IterableDataset):
                 else:
                     if self.is_valid:
                         if self.using_cmd:
-                            batch = ValidCmdBatch(trajectories.astype(np.float32), conditions.astype(np.float32), np.asarray(bev_img[0]), cmd.astype(int))
+                            batch = ValidCmdImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), np.asarray(0), cmd.astype(int), np.asarray(bev_img[0]))
                         else:
-                            batch = ValidBatch(trajectories.astype(np.float32), conditions.astype(np.float32), np.asarray(bev_img[0]))
+                            batch = ValidImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), np.asarray(0), np.asarray(0), np.asarray(bev_img[0]))
                     else:
                         if self.using_cmd:
-                            batch = CmdBatch(trajectories.astype(np.float32), conditions.astype(np.float32), cmd.astype(int))
+                            batch = CmdImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), np.asarray(0), cmd.astype(int))
                         else:
-                            batch = Batch(trajectories.astype(np.float32), conditions.astype(np.float32))
+                            batch = CmdImageBatch(trajectories.astype(np.float32), conditions.astype(np.float32), np.asarray(0), np.asarray(0))
                 yield batch

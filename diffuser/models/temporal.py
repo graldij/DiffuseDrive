@@ -7,6 +7,11 @@ from einops.layers.torch import Rearrange
 from einops import rearrange
 import pdb
 from torch.distributions import Bernoulli
+import os
+import copy
+
+# segmentation backbone from https://github.com/CSAILVision/semantic-segmentation-pytorch/tree/master
+from .image_encoder import FeatureExtractorCsailResnet, FeatureExtractorDeeplabMobilenet
 
 from .helpers import (
     SinusoidalPosEmb,
@@ -490,6 +495,12 @@ class TemporalUnetCarla(nn.Module):
             elif self.image_backbone == 'lraspp_mobilenet':
                 self.image_encoder = FeatureExtractorMobileNetSSeg(freeze=image_backbone_freeze)
                 self.img_out_dim = 1280
+            elif self.image_backbone == "csail_resnet50":
+                self.image_encoder = FeatureExtractorCsailResnet(freeze=image_backbone_freeze)
+                self.img_out_dim = 1280
+            elif self.image_backbone == "deeplab_mobilenet":
+                self.image_encoder = FeatureExtractorDeeplabMobilenet(freeze=image_backbone_freeze)
+                self.img_out_dim = 1280
 
             # TODO: here input output dim is hardcoded
             # [MOD] mlp to map the concatenated encoded images from past frames
@@ -525,7 +536,7 @@ class TemporalUnetCarla(nn.Module):
                         act_fn,
                         nn.Linear(dim * 4, dim),
                     )
-            self.mask_dist = Bernoulli(probs=1-self.condition_dropout)
+        self.mask_dist = Bernoulli(probs=1-self.condition_dropout)
         
         embed_dim = dim + self.img_out_dim + 4* self.cmd_out_dim
         
@@ -591,6 +602,9 @@ class TemporalUnetCarla(nn.Module):
                 elif self.image_backbone == 'lraspp_mobilenet':
                     flattened_encoded_img = einops.rearrange(encoded_img, 'b c h w -> b (c h w)')
                     stacked_encoded_img[:, i* self.img_out_dim : (i+1) * self.img_out_dim] = flattened_encoded_img.squeeze()
+                elif self.image_backbone == 'deeplab_mobilenet':
+                    flattened_encoded_img = einops.rearrange(encoded_img, 'b c h w -> b (c h w)')
+                    stacked_encoded_img[:, i* self.img_out_dim : (i+1) * self.img_out_dim] = flattened_encoded_img.squeeze()
             
             # [Mod] apply MLP to map the concatenated encoded images
             img_cond = self.stacked_img_mlp(stacked_encoded_img)
@@ -615,7 +629,6 @@ class TemporalUnetCarla(nn.Module):
         
         # condition on high level commands
         if self.using_cmd:
-            # breakpoint()
             stacked_encoded_cmd = torch.zeros((cmd.shape[0], cond.shape[1] * self.cmd_out_dim), device=x.device).type(x.type())
             # convert to float and to device
             # cmd_cond = self.cmd_mlp((1.0)*cmd.squeeze(2).to(cond.device))
@@ -707,8 +720,6 @@ class TemporalUnetCarla(nn.Module):
 
         return x
     
-    
-    
 class FeatureExtractorResnet(nn.Module):
     def __init__(self, pretrained=True, freeze=True):
         super().__init__()
@@ -725,14 +736,14 @@ class FeatureExtractorResnet(nn.Module):
 class FeatureExtractorMobileNetSSeg(nn.Module):
     def __init__(self, pretrained=True, freeze=True):
         super().__init__()
+        self.lraspp_mobilenet_v3_large = lraspp_mobilenet_v3_large(weights='LRASPP_MobileNet_V3_Large_Weights.DEFAULT')
+        self.backbone = self.lraspp_mobilenet_v3_large.backbone
+        self.conv_reduce = nn.Conv2d(40, 5, 1, padding='same')
         if freeze:
-            self.lraspp_mobilenet_v3_large = lraspp_mobilenet_v3_large(weights='LRASPP_MobileNet_V3_Large_Weights.DEFAULT')
-            self.backbone = self.lraspp_mobilenet_v3_large.backbone
             for name, param in self.backbone.named_parameters():
                 param.requires_grad = False
-            self.conv_reduce = nn.Conv2d(40, 5, 1, padding='same')
         else:
-            raise NotImplementedError
+            return
 
     def forward(self, x):
         seg = self.backbone(x) # out is a dict with keys: 'high', 'low'
